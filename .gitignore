@@ -1,0 +1,45 @@
+# Dependencies
+node_modules/
+.pnp.*
+.yarn/*
+
+# Build output
+dist/
+build/
+out/
+.next/
+*.tsbuildinfo
+
+# Hardhat
+packages/contracts/artifacts/
+packages/contracts/cache/
+packages/contracts/typechain-types/
+packages/contracts/coverage/
+packages/contracts/coverage.json
+
+# Environment — never commit secrets
+.env
+.env.*
+!.env.example
+!.env.local.example
+
+# Deployment secrets
+*.pem
+*.key
+keystore/
+
+# Logs
+*.log
+yarn-error.log
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/*
+!.vscode/extensions.json
+*.swp
+
+# Test / tooling
+.vercel
+.nyc_output/
+coverage/

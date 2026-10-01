@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+    "noImplicitOverride": true,
+    "declaration": true,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "verbatimModuleSyntax": false,
+    "forceConsistentCasingInFileNames": true,
+    /**
+     * Relative imports carry their `.ts` extension.
+     *
+     * These packages are consumed as source, not as built output, and they are
+     * loaded two ways: by the bundler, which resolves either form, and by Node
+     * directly, which resolves only the explicit one. Writing the extension is
+     * what lets a script run the exact module the browser runs, instead of a
+     * re-implementation that can drift from it.
+     */
+    "allowImportingTsExtensions": true,
+    /**
+     * Node's ambient types and nothing else.
+     *
+     * Without a `types` list TypeScript loads every package under
+     * `node_modules/@types` globally, so a transitive dependency's stray typings
+     * become part of the program and the build fails on a type definition for a
+     * package this project does not use and cannot remove.
+     *
+     * `node` is named because the workspace packages are consumed as source
+     * rather than as built output: typechecking any one of them pulls the others
+     * into the same program, and `@thematic/config` reads `process.env`.
+     */
+    "types": ["node"]
+  }
+}

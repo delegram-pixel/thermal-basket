@@ -1,0 +1,38 @@
+{
+  "name": "thematic-baskets",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Thematic baskets of tokenized stocks on BNB Smart Chain",
+  "license": "MIT",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "scripts": {
+    "build": "yarn workspace @thematic/contracts build && yarn workspace @thematic/web build",
+    "compile": "yarn workspace @thematic/contracts compile",
+    "test": "yarn workspace @thematic/contracts test",
+    "test:contracts": "yarn workspace @thematic/contracts test",
+    "test:web": "yarn workspace @thematic/web test",
+    "export:abi": "yarn workspace @thematic/contracts export:abi",
+    "check:contracts": "yarn workspace @thematic/contracts export:abi:check && yarn workspace @thematic/contracts test",
+    "lint": "yarn workspace @thematic/contracts lint && yarn workspace @thematic/web lint",
+    "typecheck": "yarn workspace @thematic/web typecheck",
+    "dev": "yarn workspace @thematic/web dev",
+    "node:chain": "yarn workspace @thematic/contracts node",
+    "deploy:local": "yarn workspace @thematic/contracts deploy:local",
+    "deploy:testnet": "yarn workspace @thematic/contracts deploy:testnet",
+    "seed:local": "yarn workspace @thematic/contracts seed:local",
+    "seed:testnet": "yarn workspace @thematic/contracts seed:testnet",
+    "format": "prettier --write \"**/*.{ts,tsx,js,mjs,json,md,sol}\"",
+    "format:check": "prettier --check \"**/*.{ts,tsx,js,mjs,json,md,sol}\"",
+    "clean": "rm -rf node_modules packages/*/node_modules apps/*/node_modules packages/contracts/artifacts packages/contracts/cache packages/contracts/typechain-types apps/web/.next"
+  },
+  "devDependencies": {
+    "prettier": "3.6.2",
+    "prettier-plugin-solidity": "2.1.0"
+  }
+}

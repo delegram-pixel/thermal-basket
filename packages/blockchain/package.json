@@ -1,0 +1,39 @@
+{
+  "name": "@thematic/blockchain",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Wallet configuration, contract reads and writes, and the formatting and error translation the UI needs",
+  "license": "MIT",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./reads": "./src/reads.ts",
+    "./format": "./src/format.ts",
+    "./errors": "./src/errors.ts",
+    "./abis": "./src/abis.ts",
+    "./utils": "./src/utils.ts"
+  },
+  "sideEffects": false,
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "verify:reads": "node scripts/verify-reads.ts"
+  },
+  "dependencies": {
+    "@tanstack/react-query": "5.104.0",
+    "@thematic/config": "1.0.0",
+    "@thematic/contracts": "1.0.0",
+    "@thematic/types": "1.0.0",
+    "viem": "2.57.1",
+    "wagmi": "3.7.7"
+  },
+  "devDependencies": {
+    "@types/react": "19.3.0",
+    "react": "19.3.0",
+    "typescript": "5.9.2"
+  },
+  "peerDependencies": {
+    "react": "^19.0.0"
+  }
+}

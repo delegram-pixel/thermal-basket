@@ -1,0 +1,281 @@
+@import 'tailwindcss';
+
+/*
+ * THE DESIGN SYSTEM
+ * =================
+ *
+ * Direction: "Premium Financial Editorial" (spec §24). The reference object is a
+ * printed research note from a serious institution, not a dashboard. That choice
+ * decides most of what follows:
+ *
+ * - A warm paper ground rather than pure white or dark chrome. Pure white reads
+ *   as a form; dark chrome reads as an exchange terminal, which is the identity
+ *   §24 explicitly rules out.
+ * - Hairline rules instead of boxes and shadows. A rule separates without
+ *   adding an object, which is what keeps a page of figures from turning into a
+ *   grid of cards.
+ * - One accent. Colour in this interface carries meaning — green and red are
+ *   reserved for financial movement, amber for something that needs attention —
+ *   so the brand colour cannot also be decorative (§26).
+ *
+ * The tokens below are named for what they are rather than for their role in a
+ * component, so a component can be restyled without its name becoming a lie.
+ * The mapping to §26's vocabulary is:
+ *
+ *   background        → paper
+ *   surface           → surface
+ *   surface-elevated  → raised
+ *   text-primary      → ink
+ *   text-secondary    → ink-muted
+ *   border            → rule
+ *   accent            → accent
+ *   positive/negative/warning/info → same names
+ */
+
+@theme {
+  /* -- Ground and surfaces ------------------------------------------------ */
+  --color-paper: #faf9f6;
+  --color-surface: #ffffff;
+  --color-raised: #ffffff;
+  --color-sunken: #f2f0ea;
+
+  /* -- Ink ---------------------------------------------------------------- */
+  /* 15.9:1 on paper. */
+  --color-ink: #14161a;
+  /* 5.6:1 on paper — comfortably AA for body text, not just for large text. */
+  --color-ink-muted: #5a5f6b;
+  /* 3.4:1: for the small print that is genuinely supplementary, never for
+     anything a user needs in order to act. */
+  --color-ink-faint: #85898f;
+
+  /* -- Lines -------------------------------------------------------------- */
+  --color-rule: #e2dfd8;
+  --color-rule-strong: #cbc7bd;
+
+  /* -- Accent ------------------------------------------------------------- */
+  /* A deep ink blue. 10.3:1 on paper, and white on it is 10.3:1 the other way,
+     so it works as a link colour and as a button ground without a second tone. */
+  --color-accent: #123a6b;
+  --color-accent-hover: #0d2c53;
+  --color-accent-soft: #eaeff6;
+
+  /* -- Financial semantics ------------------------------------------------ */
+  /* These four carry meaning and are never used as decoration (§26). Each clears
+     5:1 on paper, including the two that only ever appear on small type. */
+  --color-positive: #0b6b3a;
+  --color-positive-soft: #e7f2eb;
+  --color-negative: #a3231a;
+  --color-negative-soft: #faeceb;
+  --color-warning: #8a5a0b;
+  --color-warning-soft: #f9f1e2;
+  --color-info: #2e5f70;
+  --color-info-soft: #e9f1f3;
+
+  /* -- Type --------------------------------------------------------------- */
+  /* Three faces, each with a job. The serif is for editorial display — page
+     titles and basket names — and never for a control. The mono is for figures
+     that are compared down a column, addresses and hashes, and never for prose. */
+  --font-sans: var(--font-instrument-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-newsreader), ui-serif, Georgia, 'Times New Roman', serif;
+  --font-mono: var(--font-spline-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  /* -- Motion ------------------------------------------------------------- */
+  /* Short and small. An element that slides 12px while fading reads as a thing
+     arriving; one that slides 60px reads as a thing performing. */
+  --ease-out-soft: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* ---------------------------------------------------------------------------
+ * Base
+ * ------------------------------------------------------------------------- */
+
+@layer base {
+  :root {
+    /* Committed to a light ground. A half-considered dark mode is worse than
+       none: every hairline and every semantic colour above would need a second
+       value, and getting one of them wrong is how a "risk" red ends up failing
+       contrast at night. Declaring the scheme keeps form controls, scrollbars
+       and the browser's own UI in step with the page. */
+    color-scheme: light;
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    background-color: var(--color-paper);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    font-feature-settings: 'cv05' 1;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  /* Headings are the serif's territory. The tightening is optical: Newsreader's
+     default spacing is cut for running text, and a 56px headline set that way
+     looks loose. */
+  h1,
+  h2 {
+    font-family: var(--font-display);
+    font-weight: 400;
+    letter-spacing: -0.015em;
+  }
+
+  h3,
+  h4 {
+    font-weight: 600;
+    letter-spacing: -0.01em;
+  }
+
+  /* One focus treatment everywhere, and it is never removed. A focus ring that
+     only appears on some controls is worse than none, because it teaches a
+     keyboard user to trust something that is not reliable. */
+  :focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+    border-radius: 2px;
+  }
+
+  /* Figures that are read down a column must not shuffle. This is the single
+     most valuable typographic decision in a financial interface, and it is the
+     reason the mono face is here at all. */
+  :where(table, .tabular) {
+    font-variant-numeric: tabular-nums;
+  }
+
+  ::selection {
+    background-color: var(--color-accent-soft);
+    color: var(--color-accent);
+  }
+
+  /* Respect the system setting. Everything animated here is decorative, so
+     there is nothing to preserve by overriding it. */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}
+
+/* ---------------------------------------------------------------------------
+ * Components
+ * ------------------------------------------------------------------------- */
+
+/*
+ * The vertical rhythm of a page section.
+ *
+ * This is here rather than in `Section`'s own class list for one reason.
+ * `py-14 sm:py-20` is a utility, and Tailwind emits media-query variants after
+ * every base utility in the same layer. So a caller writing
+ * `<Section className="pb-8">` lost that `pb-8` the moment the sm breakpoint
+ * applied, because the later `sm:py-20` set `padding-bottom` again — the section
+ * got 80px where its author had asked for 32. It was invisible below 640px,
+ * which is the worst way for a layout bug to behave: it only appears on the
+ * screen the author is least likely to be looking at.
+ *
+ * A component-layer class is emitted before the utilities layer, so padding
+ * passed by a caller now wins whether or not it carries a breakpoint prefix.
+ * `Section` keeps its default rhythm and callers keep the ability to override
+ * it, which is what both of them were always trying to do.
+ */
+@layer components {
+  .section {
+    padding-block: 3.5rem;
+  }
+
+  @media (width >= 40rem) {
+    .section {
+      padding-block: 5rem;
+    }
+  }
+}
+
+/*
+ * The default box for the inline primitives — `Button`, `Badge`, and the
+ * network badge.
+ *
+ * This is the same hazard as `.section` above, one property over, and it was
+ * doing real damage rather than merely waiting to. Each of those components is
+ * an inline-flex row that accepts a caller `className`, and `inline-flex` in the
+ * component's own class list is a *utility*: it meets a display utility from the
+ * caller on equal footing, and Tailwind's emission order — not the order of the
+ * class attribute — decides the winner. In that order `hidden` loses.
+ *
+ * So `<NetworkBadge className="hidden lg:inline-flex" />` did not hide anything.
+ * The badge rendered at every width, and at 360px the masthead row came out
+ * 19px wider than its container: the wordmark, the badge and the wallet button
+ * add up to 339px in a 320px box. It is the first required width in §28, and it
+ * was the only one that broke.
+ *
+ * A default declared in the components layer is emitted before utilities, so a
+ * caller's `hidden`, `block` or `flex` now wins the way the caller assumed it
+ * would. That is what "default" has to mean for a component anyone may pass a
+ * className to, and it is why this belongs here rather than in three class
+ * lists that each have to remember.
+ */
+@layer components {
+  .inline-box {
+    display: inline-flex;
+    align-items: center;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+ * Utilities
+ * ------------------------------------------------------------------------- */
+
+@utility tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+/* A figure set in the mono face with the size pulled down to match the sans
+   optically. Spline Sans Mono sits larger on the body than Instrument Sans at
+   the same nominal size, and a number that outweighs the label beside it reads
+   as shouting. */
+@utility figure {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 0.9375em;
+  letter-spacing: -0.01em;
+}
+
+/* The small-caps label above a figure. Used for stat labels and table headers.
+   It is a label, not a kicker above a heading — §24's "minimal decorative
+   noise" and the craft floor's ban on kickers both rule the other use out. */
+@utility label {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-ink-muted);
+}
+
+@utility animate-rise {
+  animation: rise 0.32s var(--ease-out-soft) both;
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* The document's own scrollbar, toned to the paper rather than left at the
+   operating system's default grey. */
+@supports (scrollbar-width: thin) {
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-rule-strong) transparent;
+  }
+}

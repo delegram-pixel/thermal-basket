@@ -1,0 +1,23 @@
+node_modules
+.next
+out
+dist
+build
+coverage
+
+# Generated from the compiled artifacts; formatting it would fight the exporter.
+packages/contracts/abis
+packages/contracts/artifacts
+packages/contracts/cache
+packages/contracts/typechain-types
+
+# Deployment records are written by the deploy scripts, not by hand.
+deployments
+
+# The specification and the plan are source material, not output. They are read
+# as written, and reflowing them would rewrite the document the build is
+# measured against.
+prompt.md
+plan.md
+
+yarn.lock
