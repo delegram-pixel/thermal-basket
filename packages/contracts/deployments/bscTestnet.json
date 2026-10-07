@@ -1,0 +1,82 @@
+{
+  "network": "bscTestnet",
+  "chainId": 97,
+  "deployedAt": "2026-10-07T12:49:45.568Z",
+  "deployer": "0xE56D29EC5eD0f19A9F97583b8333e0616AB0720c",
+  "contracts": {
+    "settlementToken": "0x33e68569e0F4e32fAFA62B9B706A09471C07bAa9",
+    "priceProvider": "0xA38FD8231712aC27b83b4F1a90ae50Ba2ACF2D79",
+    "dexAdapter": "0x4cC2DfcC3f88E173ED12948874E6995817d5e7b9",
+    "router": "0xb9dc6aE6fc66Bf79940a7734E7A0B5990D7a3924",
+    "factory": "0xDA5E760569cc3587f11dC3aDC488774e07992bf3",
+    "wrappedNative": "0x2b29D40d57B6338fF52b045a0a02324873e04CD2",
+    "components": {
+      "mNVDA": "0x4fC213a2c05b66976CA43799d3a998AcC2B66b88",
+      "mMSFT": "0x32Aa189B93c5437F363c161319D66AAb0C934054",
+      "mGOOGL": "0x46067439e0acf6a05B95D42187fAd7BE27994E78",
+      "mAMZN": "0x71eb585f100d6D50009BBa5F3BeB579aB2ef9dD2",
+      "mMETA": "0xBd3815Fb0355edbD2096f77dd55d4fFE01866505",
+      "mTSLA": "0xfA10024Bb77e64bfb0C6a096CB0B219E4870c517",
+      "mCOIN": "0x72E79dB0EB0F27AfA54267578a50aCa35aD1E120",
+      "mMSTR": "0x808016098af3f102fdaf31bAaD084FCf9Aa3dc42"
+    }
+  },
+  "roles": {
+    "protocolAdmin": "0xE56D29EC5eD0f19A9F97583b8333e0616AB0720c",
+    "protocolTreasury": "0xE56D29EC5eD0f19A9F97583b8333e0616AB0720c",
+    "priceProviderAdmin": "0xE56D29EC5eD0f19A9F97583b8333e0616AB0720c"
+  },
+  "transactions": {
+    "settlementToken": "0x4764e7b40be57dc46157e6d32d55568e20cdd19644266df5ef752a15f794dce5",
+    "component:mNVDA": "0xf385a6342785df75ffc24d063e4d2e86347cd7485d1aac08ef4267e857cbef22",
+    "component:mMSFT": "0xa6e8d29b17109b7bba473ab618c05b66557fa67e958afb97b34950f6cf72cb31",
+    "component:mGOOGL": "0xbbf9cf524db12055114d79194ff1a92aada5db6df625fe80e8f5ce4582541712",
+    "component:mAMZN": "0x9f463c14c543d9b12b2ae593e4e2db71a11b4016be855091acf3fada3b557f8b",
+    "component:mMETA": "0x6c45a407274840cfe226c0993dc1017e8d5552aaf2d29f9648a5c1c397a33b3d",
+    "component:mTSLA": "0xc1453c79e00d1c0615e12fec337696af1f8b23450bbb5c3a74c58b8634aaca04",
+    "component:mCOIN": "0x30da10835164149728dd185dbbb6cfdad92854552aa315a2be55ee321b34eec8",
+    "component:mMSTR": "0xe92b71a94e6416dfd7707be0da4e9e6e75967b3dfa9756c3406bd43921fe2bc1",
+    "priceProvider": "0x9cd406cd9875a3d8984ea11bfcd2c29b73a2232b7f770dd84cfad3bd0b11c2cb",
+    "wrappedNative": "0x39540e44cac37c788d219a8f9f47dff3b4e0e9d91a0cd42f9da158cde78909c0",
+    "router": "0xd834569d867a849121116e1874ecc019d3d1454fce4bced51cfbd03a7c5c7260",
+    "dexAdapter": "0x8abf6a44615536dedc15fd28c90a8273be96d54b3f7d3695135a252f8491c3e5",
+    "factory": "0x4a44b1940a0d082cc4b19db97536821b0fe37bda05bec82e8bff526bb12aca4c",
+    "seed:mNVDA": "0x8f2b992e5c5a4f097e6464e68d517332dfcd3380675370e5d96431e4982daf66",
+    "seed:mMSFT": "0xbea04a01cc633f0040ee0aa3a4470c617b70d3799ed9d669cc367060f5f46a0a",
+    "seed:mGOOGL": "0x81efa1714777ab03ea071c9a1242cd605615326fb08e426fbaee60e378d750a9",
+    "seed:mAMZN": "0x70aadfa7b8036799eebffa2611c5e7bd7cb8734e584127e1aedc05e63cd7979f",
+    "seed:mMETA": "0xd768ccfa00c3468b75d94a682dbc02b7f4f66f262d054ce6f8c176ed19c98acf",
+    "seed:mTSLA": "0x023d0f0f2c9c54d21503fe1a1644da44b0c07006486b95719d6541bceae6cd4b",
+    "seed:mCOIN": "0x243871fa43b8a19901c835dd312b501682a1b7fd5d3f74d1acc5b9118734cb48",
+    "seed:mMSTR": "0xa0c21eeb195dcc47a549bd8e316cf1317fc888e49361df886b9bf96d72589020",
+    "create:AIW": "0x14832d9f22b6057d566f9af4f7cf0553b8deea36789cbaa2b6899c12dde628c4",
+    "deposit:AIW": "0xf0fe2428fb2f107965ded08b6aa6e19c24d0ee9b17524a857f792fdd5a193be8",
+    "create:MCC": "0x043621056dc60616df527b6ae42b719f33ecb9f30249d933867564fb7c7b9e02",
+    "deposit:MCC": "0x3aa8860ae57b88fddb98f06a148ee82a04dfa58a87bd7e53509c781a11579d9d",
+    "create:CRYB": "0x50a3f19c05611e0c2a997ef4efb2a6f3542498c4ee5b8c32843a392ec58fc4e9",
+    "deposit:CRYB": "0xf45ec68b2827453007e37266d8e5fa4ac79101f21b7f13edb9f691e82d59e386"
+  },
+  "baskets": [
+    {
+      "name": "AI Winners",
+      "symbol": "AIW",
+      "theme": "Artificial Intelligence",
+      "address": "0x4360C58b8Ebd51e755c18D2D60918182fE4b9494",
+      "creator": "0xE56D29EC5eD0f19A9F97583b8333e0616AB0720c"
+    },
+    {
+      "name": "Mega Cap Core",
+      "symbol": "MCC",
+      "theme": "Mega Cap Technology",
+      "address": "0x92fD6524830d67eAD8837886E827DFbb28d07856",
+      "creator": "0xE56D29EC5eD0f19A9F97583b8333e0616AB0720c"
+    },
+    {
+      "name": "Crypto Beta",
+      "symbol": "CRYB",
+      "theme": "Crypto-Exposed Equities",
+      "address": "0xFfDF47f1E7955d76eDA4AF24a34A0571762ed64b",
+      "creator": "0xE56D29EC5eD0f19A9F97583b8333e0616AB0720c"
+    }
+  ]
+}

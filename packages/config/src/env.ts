@@ -54,6 +54,17 @@ const schema = z.object({
   dexAdapter: optionalAddress,
   /** Enables the WalletConnect connector. Absent is a supported configuration. */
   walletConnectProjectId: z.string().min(1).optional(),
+  /**
+   * The escape hatch for {@link assertDeployableChain}.
+   *
+   * Parsed strictly rather than coerced, because `z.coerce.boolean()` reads the
+   * string `"false"` as `true` — every non-empty string is truthy. A variable
+   * that turns a guard off when it is set to `false` is worse than no guard.
+   */
+  allowLocalChainInProduction: z
+    .enum(['true', 'false'])
+    .default('false')
+    .transform((value) => value === 'true'),
 });
 
 /**
@@ -103,6 +114,7 @@ function readEnv(): PublicEnv {
     priceProvider: process.env.NEXT_PUBLIC_PRICE_PROVIDER,
     dexAdapter: process.env.NEXT_PUBLIC_DEX_ADAPTER,
     walletConnectProjectId: process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID,
+    allowLocalChainInProduction: process.env.NEXT_PUBLIC_ALLOW_LOCAL_CHAIN_IN_PRODUCTION,
   });
 
   if (!result.success) {
@@ -114,7 +126,73 @@ function readEnv(): PublicEnv {
     throw new Error(`Invalid public environment configuration:\n${issues}`);
   }
 
+  // Whether the chain was chosen or merely defaulted into. Same resolved value
+  // either way, but a very different message for whoever has to fix it.
+  assertDeployableChain(result.data, process.env.NEXT_PUBLIC_CHAIN_ID !== undefined);
+
   return result.data;
+}
+
+/**
+ * The chains a deployed bundle is allowed to be pointed at.
+ *
+ * Derived from `SUPPORTED_CHAINS` rather than restated, so that adding a chain
+ * cannot leave this list behind.
+ */
+const DEPLOYABLE_CHAINS = SUPPORTED_CHAINS.filter((chain) => chain.id !== CHAIN_IDS.local);
+
+/**
+ * Refuses to build a production bundle pointed at the local Hardhat chain.
+ *
+ * `DEFAULT_CHAIN_ID` is the local chain, which is the right default for
+ * `yarn dev`: a fresh clone with no `.env` has to land on a working app, and the
+ * only node it can rely on is the developer's own. It is the wrong default for
+ * `next build`, and it fails in the worst way available.
+ *
+ * The failure is silent at build time and remote at run time. An unset
+ * `NEXT_PUBLIC_RPC_URL` on chain 31337 falls through to viem's own default for
+ * Hardhat, `http://127.0.0.1:8545` — correct for the build machine and wrong for
+ * everyone else, because `127.0.0.1` in a deployed bundle is the *visitor's*
+ * computer. Nothing is listening there, so every read fails with a bare "Failed
+ * to fetch" and the page renders an error where its content should be. The build
+ * itself looks entirely healthy, which is the actual defect.
+ *
+ * So a production build has to name its chain. 31337 is still permitted, but
+ * only alongside an explicit override: `yarn build && yarn start` against your
+ * own node is a real workflow, and on that machine `127.0.0.1` genuinely is
+ * reachable from a browser. The distinction being enforced is between a chain
+ * someone chose and one they fell into.
+ */
+function assertDeployableChain(env: PublicEnv, chainIdWasSet: boolean): void {
+  // `next dev` sets NODE_ENV to `development`; every other Next command sets
+  // `production`. That is the documented split, and it is what separates a
+  // developer's machine from a build that is going to be deployed.
+  if (process.env.NODE_ENV !== 'production') return;
+  if (env.chainId !== CHAIN_IDS.local) return;
+  if (env.allowLocalChainInProduction) return;
+
+  const deployable = DEPLOYABLE_CHAINS.map((chain) => `${chain.id} (${chain.name})`).join(', ');
+
+  throw new Error(
+    [
+      'A production build is pointed at the local Hardhat chain (31337).',
+      '',
+      chainIdWasSet
+        ? '  NEXT_PUBLIC_CHAIN_ID is set to 31337.'
+        : '  NEXT_PUBLIC_CHAIN_ID is not set, so the build fell back to the development default.',
+      '',
+      'Hardhat runs on the machine that started it. Deployed, every read is issued',
+      "against http://127.0.0.1:8545 on the visitor's own computer, where nothing is",
+      'listening, and each page that touches a contract fails with "Failed to fetch".',
+      '',
+      `Set NEXT_PUBLIC_CHAIN_ID to one of ${deployable}, together with`,
+      'NEXT_PUBLIC_FACTORY_ADDRESS and the other addresses from the deployment',
+      'record in packages/contracts/deployments/.',
+      '',
+      'If this build is for a node on the machine serving it, where 127.0.0.1 is',
+      'reachable from the browser, set NEXT_PUBLIC_ALLOW_LOCAL_CHAIN_IN_PRODUCTION=true.',
+    ].join('\n'),
+  );
 }
 
 export const publicEnv: PublicEnv = readEnv();

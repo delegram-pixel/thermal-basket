@@ -234,15 +234,35 @@ addresses.
 Next.js inlines `NEXT_PUBLIC_*` into the browser bundle. Contract addresses are
 public by definition and belong there; keys and paid RPC credentials do not.
 
-| Variable                               | Meaning                                                                                                                                                                                                                        |
-| -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `NEXT_PUBLIC_CHAIN_ID`                 | Which chain the app talks to. Must be 31337, 97 or 56 — a value outside that list is rejected at startup with the variable named, rather than producing a wallet pointed at nothing. Defaults to 31337.                        |
-| `NEXT_PUBLIC_RPC_URL`                  | JSON-RPC endpoint. Optional; each supported chain falls back to a public endpoint, which is fine for reading. The app issues one `eth_call` per basket and per component, so a busy session will rate-limit a public endpoint. |
-| `NEXT_PUBLIC_FACTORY_ADDRESS`          | The `BasketFactory` to create through and enumerate from. **The one address the app cannot function without on a remote chain.**                                                                                               |
-| `NEXT_PUBLIC_SETTLEMENT_TOKEN`         | The ERC-20 users deposit and redeem into. Every basket on a factory settles in whatever that factory was deployed with.                                                                                                        |
-| `NEXT_PUBLIC_PRICE_PROVIDER`           | The `IPriceProvider` the baskets read component prices from.                                                                                                                                                                   |
-| `NEXT_PUBLIC_DEX_ADAPTER`              | The `IDexAdapter` component purchases route through.                                                                                                                                                                           |
-| `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID` | Enables the WalletConnect connector. A project id is not a secret — it ships in the bundle and on every QR code the connector issues. Absent is a supported configuration; the injected connector still works.                 |
+| Variable                                      | Meaning                                                                                                                                                                                                                                                        |
+| --------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `NEXT_PUBLIC_CHAIN_ID`                        | Which chain the app talks to. Must be 31337, 97 or 56 — a value outside that list is rejected at startup with the variable named, rather than producing a wallet pointed at nothing. Defaults to 31337. **A production build must name its chain**; see below. |
+| `NEXT_PUBLIC_ALLOW_LOCAL_CHAIN_IN_PRODUCTION` | Permits a production build pointed at the local Hardhat chain. For `yarn build && yarn start` against your own node, where `127.0.0.1` is reachable from the browser. On only when exactly `true`. Leave unset for anything deployed.                          |
+| `NEXT_PUBLIC_RPC_URL`                         | JSON-RPC endpoint. Optional; each supported chain falls back to a public endpoint, which is fine for reading. The app issues one `eth_call` per basket and per component, so a busy session will rate-limit a public endpoint.                                 |
+| `NEXT_PUBLIC_FACTORY_ADDRESS`                 | The `BasketFactory` to create through and enumerate from. **The one address the app cannot function without on a remote chain.**                                                                                                                               |
+| `NEXT_PUBLIC_SETTLEMENT_TOKEN`                | The ERC-20 users deposit and redeem into. Every basket on a factory settles in whatever that factory was deployed with.                                                                                                                                        |
+| `NEXT_PUBLIC_PRICE_PROVIDER`                  | The `IPriceProvider` the baskets read component prices from.                                                                                                                                                                                                   |
+| `NEXT_PUBLIC_DEX_ADAPTER`                     | The `IDexAdapter` component purchases route through.                                                                                                                                                                                                           |
+| `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID`        | Enables the WalletConnect connector. A project id is not a secret — it ships in the bundle and on every QR code the connector issues. Absent is a supported configuration; the injected connector still works.                                                 |
+
+### Why a production build must name its chain
+
+The default chain is the local Hardhat one, which is the right default for
+`yarn dev`: a fresh clone with no `.env` has to land on a working app, and the
+only node it can rely on is the developer's own.
+
+It is the wrong default for a deployed bundle, and it fails in the worst way
+available. An unset `NEXT_PUBLIC_RPC_URL` on chain 31337 falls through to viem's
+own default for Hardhat, `http://127.0.0.1:8545` — correct on the build machine,
+and meaningless everywhere else, because `127.0.0.1` in a deployed bundle is the
+_visitor's_ computer. Nothing is listening there, so every read fails with a bare
+`Failed to fetch` and each page renders an error where its content should be.
+
+The build itself looks entirely healthy, which is the actual defect — so
+`next build` now fails loudly when the resolved chain is 31337 and the override
+above is not set. 31337 is still permitted, but only when stated explicitly:
+the distinction being enforced is between a chain someone chose and one they
+fell into. `next dev` is untouched.
 
 ### Read by Hardhat only
 
@@ -369,4 +389,5 @@ fixed at deployment. Referrers, a revenue share that vests, per-component
 attribution, and a protocol fee that can be redirected without an admin deciding
 the recipient each time — that last one is the open finding in
 [docs/SECURITY.md §2.4](docs/SECURITY.md) seen as a feature rather than a defect.
+
 # thermal-basket

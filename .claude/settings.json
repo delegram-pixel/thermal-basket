@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx prettier *)",
+      "Bash(git checkout *)",
+      "Bash(node -p \"Object.keys\\(require\\('./package.json'\\).scripts\\).join\\('\\\\n'\\)\")",
+      "Bash(node --input-type=module -e ' *)"
+    ]
+  }
+}
