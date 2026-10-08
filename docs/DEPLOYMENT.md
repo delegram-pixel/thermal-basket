@@ -84,9 +84,9 @@ local mock deployment.
 yarn dev              # http://localhost:3000
 ```
 
-If you deployed from a different mnemonic or a non-default node, copy
-`.env.example` to `.env` and set `NEXT_PUBLIC_FACTORY_ADDRESS` and friends from
-the metadata file.
+If you deployed from a different mnemonic or a non-default node, create
+`apps/web/.env.local` — not the repo-root `.env`, which only Hardhat reads — and
+set `NEXT_PUBLIC_FACTORY_ADDRESS` and friends from the metadata file. See §4.3.
 
 ### 2.4 Check the read layer
 
@@ -137,9 +137,9 @@ Fill in:
 BSC_TESTNET_RPC_URL=https://data-seed-prebsc-1-s1.bnbchain.org:8545
 DEPLOYER_PRIVATE_KEY=0x...     # a key created for deployment and nothing else
 BSCSCAN_API_KEY=...            # required before verify:testnet, not before deploy
-
-NEXT_PUBLIC_CHAIN_ID=97
 ```
+
+The deploy scripts read this file — and only this file. The app does not.
 
 `BSCSCAN_API_KEY` is required by the verify step and by nothing else. Fund the
 deployer with testnet BNB from a faucet — the full sequence costs a few
@@ -161,17 +161,32 @@ yarn baskets:testnet
 Same order, same metadata contract — the file lands at
 `packages/contracts/deployments/bscTestnet.json`.
 
-`NEXT_PUBLIC_*` values in `.env` do not affect the deploy scripts; set them from
-the metadata file afterwards so the app reads the testnet deployment:
+### 4.3 Point the app at it
+
+**The app reads a different file from the deploy scripts.** Next loads env files
+only from the directory it runs in, and `next build` runs in `apps/web/`. A
+`NEXT_PUBLIC_*` value placed in the repo-root `.env` is never seen by the
+build — it produces a bundle where every one of them is `undefined`, which falls
+back to the local-chain defaults and a site that cannot read anything.
+
+So create `apps/web/.env.local` (gitignored) with the values from the metadata
+file:
 
 ```bash
+NEXT_PUBLIC_CHAIN_ID=97
+NEXT_PUBLIC_RPC_URL=https://data-seed-prebsc-1-s1.bnbchain.org:8545
+
 NEXT_PUBLIC_FACTORY_ADDRESS=0x...
 NEXT_PUBLIC_SETTLEMENT_TOKEN=0x...
 NEXT_PUBLIC_PRICE_PROVIDER=0x...
 NEXT_PUBLIC_DEX_ADAPTER=0x...
 ```
 
-### 4.3 Verify
+`NEXT_PUBLIC_*` is inlined into the bundle at build time, so changing any of
+these needs a rebuild, not a restart. Nothing secret belongs in this file: it is
+served to every visitor.
+
+### 4.4 Verify
 
 ```bash
 yarn verify:testnet
@@ -187,7 +202,20 @@ failure. It refuses to run anywhere but chain 97, and it fails loudly if
 Unverified contracts are unauditable contracts. If the deploy is part of a
 submission, verify before anyone looks at it.
 
-### 4.4 On chain 97, the assets are still mock
+### 4.5 Check the read layer against testnet
+
+```bash
+yarn workspace @thematic/blockchain run verify:reads bscTestnet
+```
+
+The same checks as §2.4, pointed at the deployed chain instead of your own node.
+It reads `BSC_TESTNET_RPC_URL` from the shell if it is exported and falls back to
+the public endpoint otherwise. Run it after every deploy: it is the only check
+that compares the numbers the frontend computes against the numbers the
+contracts hold, and a testnet deployment is exactly where a stale address or a
+half-finished seed would otherwise go unnoticed.
+
+### 4.6 On chain 97, the assets are still mock
 
 `needsMockStack()` returns true for 31337, 1337 and 97, so the testnet
 deployment uses the same openly-mintable tokens and the same administrator-set
@@ -243,8 +271,9 @@ shape as the other networks so `verify:reads` and the frontend can read it.
 
 - Verify every contract on BscScan.
 - Deploy the first basket yourself and walk a deposit and a redemption through
-  it before telling anyone the address. `verify:reads` is written for a local
-  node; its checks are the ones worth reproducing by hand against mainnet.
+  it before telling anyone the address. `verify:reads bscMainnet` runs the same
+  agreement checks as §2.4 and §4.5 against the mainnet record, and is worth
+  running before and after that walkthrough.
 - Confirm the app's `NEXT_PUBLIC_CHAIN_ID=56` build reads the right factory and
   that the mock-data notices are gone, since on mainnet they would be false.
 

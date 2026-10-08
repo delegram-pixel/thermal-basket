@@ -1454,6 +1454,11 @@
   dependencies:
     "@types/node" "*"
 
+"@vercel/analytics@^2.0.1":
+  version "2.0.1"
+  resolved "https://registry.yarnpkg.com/@vercel/analytics/-/analytics-2.0.1.tgz#d7d7bd37af7cfbeea95db5f132ae4889f4d26407"
+  integrity sha512-MTQG6V9qQrt1tsDeF+2Uoo5aPjqbVPys1xvnIftXSJYG2SrwXRHnqEvVoYID7BTruDz4lCd2Z7rM1BdkUehk2g==
+
 "@wagmi/connectors@8.2.0":
   version "8.2.0"
   resolved "https://registry.yarnpkg.com/@wagmi/connectors/-/connectors-8.2.0.tgz#cba31bac2d519ac295c71eb1278205cb80d5aaf9"

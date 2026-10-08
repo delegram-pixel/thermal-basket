@@ -1,8 +1,8 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
-import { createPublicClient, http, type Address } from 'viem';
-import { hardhat } from 'viem/chains';
+import { createPublicClient, http, type Address, type Chain } from 'viem';
+import { bsc, bscTestnet, hardhat } from 'viem/chains';
 import {
   readBasket,
   readBasketAddresses,
@@ -34,6 +34,9 @@ import { formatBps, formatNavPerShare, formatSettlement, formatWeight } from '..
  *   yarn workspace @thematic/contracts seed:local
  *   yarn workspace @thematic/contracts baskets:local
  *   yarn workspace @thematic/blockchain verify:reads
+ *
+ * Pass a network name to check a deployed one instead of the local node:
+ *   yarn workspace @thematic/blockchain verify:reads bscTestnet
  */
 
 interface DeploymentShape {
@@ -43,15 +46,68 @@ interface DeploymentShape {
   contracts: { factory: string };
 }
 
-const here = dirname(fileURLToPath(import.meta.url));
-const deploymentPath = resolve(here, '../../contracts/deployments/localhost.json');
+/**
+ * The networks this script can be pointed at.
+ *
+ * It used to be hard-wired to `localhost.json` and `127.0.0.1:8545`, which made
+ * it quietly useless for the question it is actually asked after a deploy —
+ * "does the read layer agree with the chain *I* deployed?" Run against testnet
+ * it would verify a stale local node, or fail with "no local deployment" while a
+ * perfectly good `bscTestnet.json` sat in the same directory. Neither outcome
+ * says the testnet numbers are wrong; both make it easy to believe they are
+ * right.
+ */
+const NETWORKS = {
+  localhost: (): { chain: Chain; rpcUrl: string } => ({
+    chain: hardhat,
+    rpcUrl: 'http://127.0.0.1:8545',
+  }),
+  bscTestnet: (): { chain: Chain; rpcUrl: string } => ({
+    chain: bscTestnet,
+    // The contracts package reads this from the repo-root `.env`, through
+    // Hardhat's explicit `dotenv.config`. This script is plain Node and loads no
+    // env file, so it takes the variable when the shell already has it and falls
+    // back to the public endpoint the deploy scripts use as their default.
+    rpcUrl: process.env.BSC_TESTNET_RPC_URL ?? 'https://data-seed-prebsc-1-s1.bnbchain.org:8545',
+  }),
+  /**
+   * Read-only, and deliberately so.
+   *
+   * There is no `deploy:mainnet` (§5), and this entry adds none. It reads a
+   * `bscMainnet.json` recorded by whatever reviewed deployment process produced
+   * one, and runs exactly the same agreement checks. That is the reproduction
+   * §5 asks for by hand, minus the by-hand.
+   */
+  bscMainnet: (): { chain: Chain; rpcUrl: string } => ({
+    chain: bsc,
+    rpcUrl: process.env.BSC_MAINNET_RPC_URL ?? 'https://bsc-dataseed.bnbchain.org',
+  }),
+} as const;
 
-function loadDeployment(): DeploymentShape {
+type NetworkName = keyof typeof NETWORKS;
+
+const here = dirname(fileURLToPath(import.meta.url));
+
+function resolveNetwork(name: string): { network: NetworkName; chain: Chain; rpcUrl: string; path: string } {
+  if (!Object.hasOwn(NETWORKS, name)) {
+    throw new Error(
+      `Unknown network "${name}". Known: ${Object.keys(NETWORKS).join(', ')}. Usage: verify:reads [network]`,
+    );
+  }
+  const network = name as NetworkName;
+  return {
+    network,
+    ...NETWORKS[network](),
+    path: resolve(here, `../../contracts/deployments/${network}.json`),
+  };
+}
+
+function loadDeployment(path: string, network: NetworkName): DeploymentShape {
   try {
-    return JSON.parse(readFileSync(deploymentPath, 'utf8')) as DeploymentShape;
+    return JSON.parse(readFileSync(path, 'utf8')) as DeploymentShape;
   } catch {
     throw new Error(
-      `No local deployment at ${deploymentPath}. Run the contracts package's deploy:local, seed:local and baskets:local first.`,
+      `No deployment for "${network}" at ${path}. Run that network's deploy, seed and baskets scripts first.`,
     );
   }
 }
@@ -67,13 +123,25 @@ function rule(title: string): void {
 }
 
 async function main(): Promise<void> {
-  const deployment = loadDeployment();
+  const { network, chain, rpcUrl, path } = resolveNetwork(process.argv[2] ?? 'localhost');
+  const deployment = loadDeployment(path, network);
   const factory = deployment.contracts.factory as Address;
 
-  const client = createPublicClient({ chain: hardhat, transport: http('http://127.0.0.1:8545') });
+  // A metadata file names its own chain, and a mismatched pair here would mean
+  // reading one network's addresses from another network's RPC — which returns
+  // nothing at every call rather than a wrong number, but the failures come back
+  // as "the factory could not be read" and read like a contract problem.
+  if (Number(deployment.chainId) !== chain.id) {
+    throw new Error(
+      `${path} records chain ${deployment.chainId}, but "${network}" is chain ${chain.id}. The file and the network disagree.`,
+    );
+  }
+
+  const client = createPublicClient({ chain, transport: http(rpcUrl) });
 
   rule(`Read layer — ${deployment.network} (chain ${deployment.chainId})`);
   field('Factory', factory);
+  field('RPC', rpcUrl);
 
   // -- Factory configuration ------------------------------------------------
   const config = await readFactoryConfig(client, factory);

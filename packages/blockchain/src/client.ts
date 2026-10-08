@@ -2,7 +2,6 @@ import { createPublicClient, http, type PublicClient } from 'viem';
 import { createConfig, createStorage } from 'wagmi';
 import { injected, walletConnect } from 'wagmi/connectors';
 import {
-  DEFAULT_CHAIN_ID,
   SUPPORTED_CHAINS,
   getChain,
   publicEnv,
@@ -51,20 +50,80 @@ const connectors = [
     : []),
 ];
 
-/** A transport per chain. The configured RPC URL is used for the default chain only. */
+type SupportedChain = (typeof SUPPORTED_CHAINS)[number];
+
+/**
+ * The chain this build was configured for, first.
+ *
+ * wagmi starts on the **first** entry of `chains` — `createConfig` sets
+ * `chainId: chains.getState()[0].id` — so the order of this array *is* the
+ * runtime default. `SUPPORTED_CHAINS` is ordered for the reader (local, testnet,
+ * mainnet) and its first entry is Hardhat, which means passing it through
+ * unchanged starts every build on 31337.
+ *
+ * That is harmless on a developer's machine and wrong everywhere else. On a
+ * chain-97 build `useChainId()` answers 31337 until a wallet connects, and
+ * everything derived from it follows: `usePublicClient()` hands back the local
+ * client, `getAddressBook()` returns the chain-97 book while the client reads
+ * chain 31337, and `explorerAddressUrl()` returns `null` because Hardhat has no
+ * explorer. The reads only appeared to work because the RPC gate below was
+ * misdirecting the testnet endpoint into the 31337 transport.
+ *
+ * Reordering here rather than in `chains.ts` keeps `SUPPORTED_CHAINS` as the one
+ * readable list of what is supported, while making the chain wagmi actually
+ * starts on the one the build was pointed at.
+ */
+const CHAINS_BY_PRIORITY: readonly [SupportedChain, ...SupportedChain[]] = [
+  getChain(publicEnv.chainId),
+  ...SUPPORTED_CHAINS.filter((chain) => chain.id !== publicEnv.chainId),
+];
+
+/**
+ * The RPC URL for a chain, when this build has one.
+ *
+ * `NEXT_PUBLIC_RPC_URL` is a single endpoint and an endpoint serves exactly one
+ * chain — the one this build is configured for. Every other supported chain
+ * falls through to `undefined`, which viem reads as "use your bundled default
+ * for this chain".
+ *
+ * The comparison is against `publicEnv.chainId`. It used to be against
+ * `DEFAULT_CHAIN_ID`, which is the *development* default of 31337, so the
+ * configured URL was handed to the local chain and the configured chain was left
+ * on its bundled default — the exact inverse of what the variable is for. It
+ * went unnoticed because `NEXT_PUBLIC_RPC_URL` happened to be byte-identical to
+ * viem's bundled BSC testnet endpoint; point it at a paid or private node and the
+ * setting would have been ignored on the only chain that used it.
+ */
+function rpcUrlFor(chainId: number): string | undefined {
+  return chainId === publicEnv.chainId ? publicEnv.rpcUrl : undefined;
+}
+
+/** A transport per chain. See {@link rpcUrlFor}. */
 const transports = Object.fromEntries(
-  SUPPORTED_CHAINS.map((chain) => [
-    chain.id,
-    http(chain.id === DEFAULT_CHAIN_ID && publicEnv.rpcUrl ? publicEnv.rpcUrl : undefined),
-  ]),
+  SUPPORTED_CHAINS.map((chain) => [chain.id, http(rpcUrlFor(chain.id))]),
 ) as Record<SupportedChainId, ReturnType<typeof http>>;
 
 export const wagmiConfig = createConfig({
-  chains: SUPPORTED_CHAINS,
+  chains: CHAINS_BY_PRIORITY,
   connectors,
   transports,
   ssr: true,
+  /**
+   * Deliberately **not** the default `wagmi` namespace.
+   *
+   * wagmi persists `chainId` to `localStorage` and restores it on mount if it is
+   * one of the configured chains — and 31337 is configured even on a chain-97
+   * build. Anyone who loaded the earlier, misconfigured site therefore has
+   * `chainId: 31337` in storage, and after this fix they would still hydrate onto
+   * 31337 and keep seeing the local client, no explorer links and no reads, while
+   * a first-time visitor saw the working site.
+   *
+   * A distinct namespace guarantees the first state is the one computed above.
+   * The cost is that already-connected wallets reconnect once, which for an
+   * injected wallet is silent.
+   */
   storage: createStorage({
+    key: 'thematic',
     storage: typeof window === 'undefined' ? noopStorage : window.localStorage,
   }),
   batch: { multicall: false },
@@ -79,14 +138,16 @@ export type WagmiConfig = typeof wagmiConfig;
  * Server components use this, which is why it takes a chain id rather than
  * reading one from a hook: the server has no connected account and no way to ask
  * for one.
+ *
+ * The default is the configured chain, not `DEFAULT_CHAIN_ID`. A caller that
+ * omits the argument wants the deployment this build is for; defaulting to
+ * Hardhat would silently read a local node that a deployed server does not have.
  */
-export function getPublicClient(chainId: SupportedChainId = DEFAULT_CHAIN_ID): PublicClient {
+export function getPublicClient(chainId: SupportedChainId = publicEnv.chainId): PublicClient {
   const chain = getChain(chainId);
   return createPublicClient({
     chain,
-    transport: http(
-      chainId === DEFAULT_CHAIN_ID && publicEnv.rpcUrl ? publicEnv.rpcUrl : undefined,
-    ),
+    transport: http(rpcUrlFor(chainId)),
     batch: { multicall: false },
   });
 }

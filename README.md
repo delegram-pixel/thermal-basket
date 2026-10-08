@@ -214,12 +214,15 @@ frontend reads for a non-local chain.
 
 ```bash
 yarn workspace @thematic/blockchain verify:reads
+yarn workspace @thematic/blockchain run verify:reads bscTestnet   # or bscMainnet
 ```
 
 Points the exact functions the frontend calls at a live node and compares the
 contract's own `totalAssets()` against the read layer's independently computed
 sum. Two routes, two numeric types, and they must agree — the fastest way to
-catch a unit or ABI drift that a stubbed unit test cannot see.
+catch a unit or ABI drift that a stubbed unit test cannot see. It defaults to
+your local node and reads the matching `deployments/<network>.json` for any
+network you name.
 
 ---
 
@@ -229,16 +232,24 @@ Copy `.env.example` to `.env`. **Every variable is optional**: a fresh clone wit
 no `.env` runs `yarn dev` against a local node using the baked-in Hardhat
 addresses.
 
-### Read by the web app at build time
+### Read by the web app at build time — put these in `apps/web/.env.local`
+
+Next loads env files only from the directory it runs in, and `next build` runs in
+`apps/web/`. It never reads the repo-root `.env`. A `NEXT_PUBLIC_*` value placed
+there produces a bundle where the variable is `undefined` — the local-chain
+fallback, and a site that cannot read anything. The root `.env` is for the
+deploy scripts and the `NEXT_PUBLIC_*` values in `.env.example` are templates for
+this file, not entries to fill in where they sit.
 
 Next.js inlines `NEXT_PUBLIC_*` into the browser bundle. Contract addresses are
 public by definition and belong there; keys and paid RPC credentials do not.
+These are inlined at build time, so changing one needs a rebuild, not a restart.
 
 | Variable                                      | Meaning                                                                                                                                                                                                                                                        |
 | --------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `NEXT_PUBLIC_CHAIN_ID`                        | Which chain the app talks to. Must be 31337, 97 or 56 — a value outside that list is rejected at startup with the variable named, rather than producing a wallet pointed at nothing. Defaults to 31337. **A production build must name its chain**; see below. |
 | `NEXT_PUBLIC_ALLOW_LOCAL_CHAIN_IN_PRODUCTION` | Permits a production build pointed at the local Hardhat chain. For `yarn build && yarn start` against your own node, where `127.0.0.1` is reachable from the browser. On only when exactly `true`. Leave unset for anything deployed.                          |
-| `NEXT_PUBLIC_RPC_URL`                         | JSON-RPC endpoint. Optional; each supported chain falls back to a public endpoint, which is fine for reading. The app issues one `eth_call` per basket and per component, so a busy session will rate-limit a public endpoint.                                 |
+| `NEXT_PUBLIC_RPC_URL`                         | JSON-RPC endpoint for the chain `NEXT_PUBLIC_CHAIN_ID` names — one endpoint serves one chain, so the other supported chains fall back to their own public endpoints. Optional; the public fallback is fine for reading. The app issues one `eth_call` per basket and per component, so a busy session will rate-limit a public endpoint. |
 | `NEXT_PUBLIC_FACTORY_ADDRESS`                 | The `BasketFactory` to create through and enumerate from. **The one address the app cannot function without on a remote chain.**                                                                                                                               |
 | `NEXT_PUBLIC_SETTLEMENT_TOKEN`                | The ERC-20 users deposit and redeem into. Every basket on a factory settles in whatever that factory was deployed with.                                                                                                                                        |
 | `NEXT_PUBLIC_PRICE_PROVIDER`                  | The `IPriceProvider` the baskets read component prices from.                                                                                                                                                                                                   |

@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { Container } from '@/components/ui/layout.tsx';
 import { WalletButton } from '@/components/wallet/wallet-button.tsx';
-import { NetworkBadge } from '@/components/wallet/network-badge.tsx';
+import { NetworkBadge, NetworkGuard } from '@/components/wallet/network-badge.tsx';
 
 /**
  * The five destinations, in the order the product is used.
@@ -111,6 +111,17 @@ export function Masthead() {
           </ul>
         </nav>
       </div>
+
+      {/* Rendered here rather than on the pages that read contracts, because the
+          failure it reports is not confined to them: a wallet on the wrong chain
+          empties the discover list, every basket page and the studio at once,
+          and each of those renders an empty state that looks like real data
+          rather than like an error. One band above the page covers all of them.
+
+          It brings its own rule and gutters, and renders nothing at all when the
+          chain is right — so there is no wrapper here to leave an empty strip
+          inside the sticky header. */}
+      <NetworkGuard />
     </header>
   );
 }

@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from 'next';
 import { Instrument_Sans, Newsreader, Spline_Sans_Mono } from 'next/font/google';
+import { Analytics } from '@vercel/analytics/next';
 import { Providers } from './providers.tsx';
 import { Masthead } from '@/components/shell/masthead.tsx';
 import { Colophon } from '@/components/shell/colophon.tsx';
@@ -85,6 +86,13 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             <Colophon />
           </div>
         </Providers>
+
+        {/* Vercel Web Analytics. Belongs in the root layout so it survives
+            client-side navigation, and sits outside `Providers` because it has
+            no use for the wagmi or query context. The component carries its own
+            `'use client'` boundary and renders nothing, so importing it here
+            does not make this layout a client component. */}
+        <Analytics />
       </body>
     </html>
   );
