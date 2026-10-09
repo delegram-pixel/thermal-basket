@@ -77,11 +77,16 @@ const config: HardhatUserConfig = {
       accounts,
     },
   },
+  // One key, as a plain string, and it must stay that way.
+  //
+  // hardhat-verify branches on the *type* of this value: a string means "an
+  // Etherscan-family key, use API v2 and pass the chainid", while an object
+  // means "per-network explorer keys, use the old per-explorer host". The old
+  // hosts were retired in May 2025, so the object form — which this was — gets
+  // every submission rejected with "You are using a deprecated V1 endpoint"
+  // before it ever looks at the contract. The shape here is load-bearing.
   etherscan: {
-    apiKey: {
-      bscTestnet: BSCSCAN_API_KEY ?? '',
-      bsc: BSCSCAN_API_KEY ?? '',
-    },
+    apiKey: BSCSCAN_API_KEY ?? '',
   },
   gasReporter: {
     enabled: REPORT_GAS === 'true',

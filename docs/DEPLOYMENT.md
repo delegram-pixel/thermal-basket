@@ -336,6 +336,21 @@ address the app has does not match the one that was deployed. Check
 **`verify:testnet` fails with an authentication error.** `BSCSCAN_API_KEY` is
 unset or wrong. The script names it rather than skipping.
 
+**`verify:testnet` fails every contract with "You are using a deprecated V1
+endpoint".** The `etherscan.apiKey` value in `hardhat.config.ts` has been turned
+back into a per-network object. hardhat-verify branches on that value's *type*: a
+**string** means "one Etherscan-family key, use API v2 and pass the chainid",
+while an **object** means "per-explorer keys, use the old per-explorer host" —
+and those hosts were retired in May 2025, so every submission is rejected before
+the contract is even looked at. The failure is total and looks nothing like a
+config problem, which is why the comment above it says the shape is
+load-bearing. Keep it a string.
+
+**A contract reports "already verified" when it never was.** Not an error.
+BscScan auto-matches contracts whose bytecode is identical to one it has already
+verified, so the first `MockERC20` submission covers the other nine. The script
+counts this as a success.
+
 **The local node dies between steps.** See §2.1 — it was started without
 `nohup`.
 
