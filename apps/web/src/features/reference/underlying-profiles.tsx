@@ -9,13 +9,20 @@ import { useUnderlyingProfiles } from './use-reference-feed.ts';
  *
  * A ticker is a claim to nothing on its own, and a basket called "AI Winners"
  * holding `mNVDA`, `mMSFT` and `mGOOGL` is only legible to someone who already
- * knows what those companies do. This says so, from the company-profile endpoint
- * of the Binance Web3 API.
+ * knows what those companies do. This says so, from the profile endpoint of the
+ * Binance Web3 API.
  *
- * It is context and it is labelled as context. A company description on a page
- * about a basket is one step away from reading as an argument that the basket is
- * a good idea, so the heading frames it as what the holdings *are* and the
- * component adds no view about them.
+ * The endpoint does not describe companies, and an earlier version of this
+ * component assumed it did — it rendered a description, a sector and an industry,
+ * none of which the API returns, so every holding was followed by the sentence
+ * "the API returned no description for this company". What the endpoint does
+ * return sits closer to this project's subject: who issues the tokenized form, how
+ * many shares one token represents, and links to the attestation reports the
+ * issuer publishes. That is what is shown.
+ *
+ * The reports are links to the issuer's own documents. Nothing here says a claim
+ * has been checked, because nothing here checks one — it says where the issuer
+ * filed it, which is the part a reader can verify.
  *
  * Absent credentials collapse this to one notice rather than one per holding.
  * A deployment with no API key is one fact, and repeating it six times is six
@@ -72,24 +79,43 @@ export function UnderlyingProfiles({ symbols }: { symbols: readonly string[] }) 
             </dt>
 
             <dd className="mt-2 space-y-2">
-              {profile.sector || profile.industry ? (
+              {profile.platform !== null || profile.tokenToShareRatio !== null ? (
                 <p className="label">
-                  {[profile.sector, profile.industry].filter(Boolean).join(' · ')}
+                  {[
+                    profile.platform === null ? null : `Tokenized by ${profile.platform}`,
+                    // Named as the API names it. Calling this "shares per token"
+                    // would be the more natural English and a claim about which
+                    // way the ratio runs, which the field name does not settle.
+                    profile.tokenToShareRatio === null
+                      ? null
+                      : `token-to-share ratio ${profile.tokenToShareRatio.toFixed(4)}`,
+                  ]
+                    .filter(Boolean)
+                    .join(' · ')}
                 </p>
               ) : null}
 
-              {profile.description ? (
-                <p className="text-sm leading-relaxed text-ink-muted">{profile.description}</p>
-              ) : (
-                <p className="text-sm leading-relaxed text-ink-faint">
-                  The API returned no description for this company.
-                </p>
-              )}
-
-              {profile.marketCap ? (
+              {profile.marketCap !== null ? (
                 <p className="figure text-xs text-ink-faint">
                   {formatLargeNumber(profile.marketCap)} market capitalisation
                 </p>
+              ) : null}
+
+              {profile.attestations.length > 0 ? (
+                <ul className="space-y-1">
+                  {profile.attestations.map((report) => (
+                    <li key={report.url}>
+                      <a
+                        href={report.url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-xs text-ink-muted underline underline-offset-4 transition-colors hover:text-ink"
+                      >
+                        {report.label}
+                      </a>
+                    </li>
+                  ))}
+                </ul>
               ) : null}
             </dd>
           </div>

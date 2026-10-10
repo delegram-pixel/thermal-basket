@@ -18,8 +18,32 @@ derived from what the contract holds, not from a number a backend asserts.
 
 ---
 
+## Links
+
+|                                        |                                                                     |
+| -------------------------------------- | ------------------------------------------------------------------- |
+| **Deployed application**               | https://thermal-basket.vercel.app                                   |
+| **Binance Web3 API diagnostics**       | https://thermal-basket.vercel.app/diagnostics                       |
+| **Demo video**                         | _link to be added before submission_                                |
+| **Source**                             | https://github.com/delegram-pixel/thermal-basket                    |
+| **Developer experience report**        | [docs/DX-REPORT.md](docs/DX-REPORT.md)                              |
+
+`/diagnostics` is worth opening first. It calls all five Binance Web3 API
+endpoints the application uses, live, and prints each one's status, latency, error
+code and the beginning of the body it actually returned — including when the
+answer is a refusal, which is the state this integration spent most of its life
+in. It is the honest demonstration: the integration is not a screenshot of a
+successful call, it is the instrument that found out what was wrong.
+
+![A basket page: composition and weights, the contract's own NAV, the reference
+column with the underlying company's market price beside the deployment's mock
+valuation, and the issuer's attestation links](docs/screenshot.png)
+
+---
+
 ## Contents
 
+- [Links](#links)
 - [Product](#product)
 - [Architecture](#architecture)
 - [Reference prices](#reference-prices)
@@ -129,19 +153,23 @@ someone to misread as an arbitrage.
 ### Endpoints used
 
 Five RWA Data endpoints, against `https://web3.binance.com`, all with
-`chainId=56`:
+`binanceChainId=56`. The parameter is `binanceChainId`, not `chainId` — the API
+names it in the `40001` it returns if you get it wrong:
 
-| Endpoint                                        | What this application uses it for                                                                                                                                   |
-| ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `GET /api/v1/dex/market/rwa/search`             | Resolves a ticker before anything is priced. Its name and token address are what the table shows beside the ticker, so a "tokenized NVDA" claim carries a contract. |
-| `GET /api/v1/dex/market/rwa/price`              | The reference price itself, one call per ticker.                                                                                                                    |
-| `GET /api/v1/dex/market/rwa/underlying-profile` | Company context on a basket page: name, sector, industry and description.                                                                                           |
-| `GET /api/v1/dex/market/rwa/underlying-market`  | Market capitalisation, fetched alongside the profile.                                                                                                               |
-| `GET /api/v1/dex/market/rwa/tokens`             | The catalogue size, reported beside the reference column so a row with no price can be read against how many listings exist at all.                                 |
+| Endpoint | Query parameters | What this application uses it for |
+| --- | --- | --- |
+| `GET /api/v1/dex/market/rwa/tokens` | `binanceChainId` | The catalogue. One call returns every listing, which is how a whole basket's tickers are resolved to contract addresses — and the count it returns is shown beside the reference column, so a row with no price can be read against how many listings the feed is seeing. |
+| `GET /api/v1/dex/market/rwa/price` | `binanceChainId`, `tokenContractAddresses` | The reference price. Note the plural: the two endpoints below take `tokenContractAddress`, singular. |
+| `GET /api/v1/dex/market/rwa/search` | `binanceChainId`, `keyword` | Resolving a human-readable ticker to a listing. Nothing else among the five accepts a ticker. |
+| `GET /api/v1/dex/market/rwa/underlying-profile` | `binanceChainId`, `tokenContractAddress` | Who issues the tokenized form, the token-to-share ratio, and links to the attestation reports the issuer publishes as evidence the tokens are backed. |
+| `GET /api/v1/dex/market/rwa/underlying-market` | `binanceChainId`, `tokenContractAddress` | Market capitalisation, fetched alongside the profile. |
 
-None of the four ticker-scoped calls offers a batch form — it is one request per
-ticker — which is why the caller caps its ticker list at sixteen. The catalogue
-call is the one request made for the whole deployment rather than per ticker.
+Only `/search` and `/tokens` accept a ticker; the other three are keyed by contract
+address, so one is resolved first and those calls are made against it. None of them
+documents a batch form — `/price` is one call per address — which is why the caller
+caps its ticker list at sixteen. Resolving a basket costs one catalogue call plus
+one call per component; an earlier version made two per component, until `/tokens`
+turned out to return every listing at once.
 
 ### Authentication
 
@@ -180,11 +208,10 @@ HTTP 200 · code 40304 · Service not available due to compliance restriction
 ```
 
 All five endpoints returned that, from a serverless function in Vercel's default
-region. The transport, the path and the parameters were all correct — a malformed
-request returns `40102`, not a business code. Binance's RWA data is refused to a
-United States origin, which is expected for a tokenized-equity product rather than
-a bug, so the deployment's Function Region is set to Singapore (`sin1`) in Project
-Settings, and `apps/web/vercel.json` records the same value in the repository:
+region. Binance's RWA data is refused to a United States origin, which is expected
+for a tokenized-equity product rather than a bug, so the deployment's Function
+Region is set to Singapore (`sin1`) in Project Settings, and `apps/web/vercel.json`
+records the same value in the repository:
 
 ```json
 { "regions": ["sin1"] }
@@ -196,12 +223,19 @@ deprecated and which now accepts only `auto`, `global` and `home` — handing it
 region code fails the deploy.
 
 Moving the region worked, and it is the difference between this integration having
-no data and having some: `40304` disappeared on the next probe, and two of the five
-endpoints began returning real bodies. The remaining failures were then ours, and
-the API named them precisely — `40001 Parameter binanceChainId is required`, where
-we had been sending `chainId`. See [docs/DX-REPORT.md](docs/DX-REPORT.md) for the
-full finding, including why `40304` is the least actionable code in the API and
-why `40001` shows the API can be specific when it wants to be.
+no data and having all of it: `40304` disappeared on the next probe and every
+endpoint began returning real bodies. The failures that remained were ours, and the
+API named them precisely — `40001 Parameter binanceChainId is required`, where we
+had been sending `chainId`.
+
+One correction is worth recording, because it is the sharpest thing this
+integration taught me about the API. Those first probes sent `chainId`, which is
+the wrong parameter name, and they returned `40304` rather than `40001`. The
+compliance gate therefore runs **before parameter validation**, so a request with a
+known-bad parameter receives a compliance refusal instead of a parameter complaint.
+The parameter bug was undiscoverable until the region changed, and every minute
+spent re-examining the signature in that period was spent on a component that was
+correct the whole time. See [docs/DX-REPORT.md](docs/DX-REPORT.md).
 
 `/diagnostics` calls all five endpoints and prints each one's status, latency,
 error code and a truncated body excerpt. It exists because the network path to
@@ -212,11 +246,19 @@ each endpoint and reports what it actually said is the instrument that was
 missing, and it is also the honest way to demonstrate the integration: elsewhere
 a failure is a quietly empty column, and here it is the subject.
 
-The response envelopes are parsed defensively — key candidates are searched for
-at a bounded depth rather than read by a fixed path — because a live
-authenticated response was not observed while the client was written. That is a
-finding, and it is recorded as one in [docs/DX-REPORT.md](docs/DX-REPORT.md)
-rather than papered over.
+For most of the build the response envelopes were parsed defensively — candidate
+field names searched for at a bounded depth rather than read by a fixed path —
+because no authenticated success response had ever been observed. That defensive
+code concealed a real bug: the address list did not contain
+`tokenContractAddress`, so ticker resolution returned `null` on every call, in
+silence, and the only symptom was two endpoints reporting a parameter as required
+— which reads as the API's problem rather than the client's. Now that four of the
+five bodies have been seen they are read by name, and the readers are pinned by
+tests against the payloads the API actually sent. The fifth,
+`/underlying-market`, still walks its payload, because the first probe to reach it
+returned `42900 Rate limit exceeded` and it has not returned a body since. That is
+recorded as a finding in [docs/DX-REPORT.md](docs/DX-REPORT.md) rather than papered
+over.
 
 ---
 

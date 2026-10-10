@@ -23,48 +23,33 @@ import { binanceGet, type BinanceFailure, type BinanceResult } from './client.ts
  *     the singular. Neither accepts a ticker, though both of the endpoints that
  *     resolve one do.
  *
- * The search and tokens payloads have now been seen, so `searchUnderlying` and
- * `listedTokens` read them exactly. The price and profile payloads still have
- * not, so those readers walk candidate keys and return `null` rather than
- * throwing — an unanticipated shape degrades to an empty column instead of a
- * broken page. Replacing a walker with a fixed path is what it means for a body
- * to stop being a guess, and it should happen one endpoint at a time as each is
- * seen rather than all at once.
+ *   - A five-request probe drew `42900 Rate limit exceeded` on its fifth call,
+ *     which is why resolution now comes out of the one-shot `/tokens` catalogue
+ *     rather than one `/search` per ticker.
+ *
+ * This file began as an exercise in not knowing. The first version walked every
+ * payload looking for a price under any of eight plausible field names, a company
+ * name under any of six, an address under any of four — the right guess while
+ * every body was unseen, and one that cost more than it saved. The address list
+ * did not contain `tokenContractAddress`, so resolution returned `null` on every
+ * call and said nothing, and the only symptom was two endpoints reporting a
+ * parameter as required. That reads as their bug rather than ours, which is how it
+ * read for a day.
+ *
+ * Four of the five bodies have now been seen and are indexed by name. The fifth,
+ * `/underlying-market`, has not — the probe that reached it was the one that got
+ * rate-limited — so one field keeps a walker, confined to the function that needs
+ * it.
  */
 
-/** Field names a price has plausibly been given. First match wins. */
-const PRICE_KEYS = [
-  'price',
-  'priceUsd',
-  'usdPrice',
-  'referencePrice',
-  'refPrice',
-  'lastPrice',
-  'close',
-  'markPrice',
-] as const;
-
-const NAME_KEYS = [
-  'name',
-  'tokenName',
-  'underlyingName',
-  'companyName',
-  'displayName',
-  'shortName',
-] as const;
-
-/** The real key leads. It was absent from the first version of this list, which
- *  is why address resolution returned `null` on every search for as long as it
- *  ran without anyone being told. */
-const ADDRESS_KEYS = [
-  'tokenContractAddress',
-  'tokenAddress',
-  'contractAddress',
-  'address',
-] as const;
-
-/** Depth-limited walk. Deep enough for the envelopes this API uses, bounded so a
- *  self-referencing payload cannot spin. */
+/**
+ * Depth-limited walk over a payload whose shape is not known.
+ *
+ * Used by {@link firstNumber} and nothing else, for the one field belonging to
+ * `/underlying-market`, the only body this integration has never seen. Deep enough
+ * for the envelopes this API uses, and bounded so a self-referencing payload
+ * cannot spin.
+ */
 function walk(value: unknown, visit: (node: Record<string, unknown>) => boolean, depth = 0): void {
   if (depth > 4 || value === null || typeof value !== 'object') return;
 
@@ -83,34 +68,28 @@ function walk(value: unknown, visit: (node: Record<string, unknown>) => boolean,
   }
 }
 
-/** The first finite number filed under any of `keys`, anywhere in the payload. */
+/** A finite number from a JSON value that may be a number or a numeric string.
+ *  This API sends both, sometimes in the same object: `referencePrice` is the
+ *  string `"230.815"` and the timestamp beside it is a number. */
+function toNumber(value: unknown): number | null {
+  const parsed = typeof value === 'string' ? Number(value) : value;
+  return typeof parsed === 'number' && Number.isFinite(parsed) ? parsed : null;
+}
+
+/**
+ * The first finite number filed under any of `keys`, anywhere in the payload.
+ *
+ * The last walker left in the file, and it exists for exactly one field:
+ * `/underlying-market` has not been read.
+ */
 function firstNumber(payload: unknown, keys: readonly string[]): number | null {
   let found: number | null = null;
 
   walk(payload, (node) => {
     for (const key of keys) {
-      const value = node[key];
-      const parsed = typeof value === 'string' ? Number(value) : value;
-      if (typeof parsed === 'number' && Number.isFinite(parsed)) {
+      const parsed = toNumber(node[key]);
+      if (parsed !== null) {
         found = parsed;
-        return true;
-      }
-    }
-    return false;
-  });
-
-  return found;
-}
-
-/** The first non-empty string filed under any of `keys`, anywhere in the payload. */
-function firstString(payload: unknown, keys: readonly string[]): string | null {
-  let found: string | null = null;
-
-  walk(payload, (node) => {
-    for (const key of keys) {
-      const value = node[key];
-      if (typeof value === 'string' && value.trim()) {
-        found = value.trim();
         return true;
       }
     }
@@ -142,14 +121,32 @@ export interface ReferencePrice {
   tokenAddress: string | null;
 }
 
-/** A company profile, for the basket page. */
+/**
+ * What the API knows about one tokenized underlying.
+ *
+ * The shape follows the endpoint rather than the other way round, and the first
+ * version did not. It promised `description`, `sector` and `industry` — plausible
+ * fields for a company profile, and three fields this API does not have. A section
+ * that renders it spent its life saying "the API returned no description for this
+ * company" beside every holding, which is a true sentence about a question nobody
+ * had asked.
+ *
+ * What the endpoint returns instead is more pointed than a blurb, and closer to
+ * what this project is about: who issues the tokenized form, how many shares one
+ * token represents, and links to the attestation reports the issuer publishes as
+ * evidence the tokens are backed.
+ */
 export interface UnderlyingProfile {
   symbol: string;
+  /** The issuer's full name for the underlying, e.g. `NVIDIA (Ondo)`. */
   name: string | null;
-  description: string | null;
-  sector: string | null;
-  industry: string | null;
-  /** Whatever the market-fundamentals endpoint returned that we can name. */
+  /** Who issues the tokenized form, e.g. `ondo`. */
+  platform: string | null;
+  /** Units of the underlying that one token represents. */
+  tokenToShareRatio: number | null;
+  /** Proof-of-backing reports the issuer publishes, as links. */
+  attestations: ReadonlyArray<{ label: string; url: string }>;
+  /** From `/underlying-market`, whose body has not been seen. */
   marketCap: number | null;
 }
 
@@ -222,11 +219,185 @@ export function readSearchResult(payload: unknown, symbol: string): ReferencePri
   };
 }
 
-/** Resolves a ticker through `rwa/search`, so the price call can be told what it
- *  is pricing rather than being asked to guess. */
+/**
+ * Every listing the catalogue endpoint returns, fetched once per process.
+ *
+ * This is the cheap way to answer "which contract is NVDA on this chain": one
+ * request for every listing, against one `/search` per ticker. That stopped being
+ * a nicety when five sequential probes drew `42900 Rate limit exceeded` — a page
+ * holding eight components was making seventeen calls to draw one table, and
+ * nothing in the API's documentation had said a word about a burst limit.
+ *
+ * It is a cache and not a guarantee. Whether this endpoint paginates has not been
+ * established, so a ticker missing from it still costs a `/search`. Failures are
+ * deliberately not cached: a rate limit is a fact about this minute, not about the
+ * catalogue, and remembering it would turn one bad request into a process that
+ * can never resolve anything again.
+ */
+let catalogue: Array<Record<string, unknown>> | null = null;
+
+async function catalogueListings(): Promise<BinanceResult<Array<Record<string, unknown>>>> {
+  if (catalogue) return { ok: true, data: catalogue };
+
+  const result = await binanceGet<unknown>(ENDPOINTS.tokens, { binanceChainId: BINANCE_CHAIN_ID });
+  if (!result.ok) return result;
+
+  if (!Array.isArray(result.data)) {
+    return {
+      ok: false,
+      reason: 'malformed',
+      status: 0,
+      message: 'The /tokens payload did not contain the array of listings it has returned before.',
+    };
+  }
+
+  catalogue = result.data.filter(isRecord);
+  return { ok: true, data: catalogue };
+}
+
+/**
+ * One ticker's listing in the catalogue, or `null` when it is not there.
+ *
+ * Matched on `underlyingTicker` and the chain together. `binanceChainId` is a
+ * string in this payload and a number in the configuration, which is the kind of
+ * mismatch that produces an empty table rather than an error.
+ */
+function catalogueMatch(
+  listings: ReadonlyArray<Record<string, unknown>>,
+  symbol: string,
+): { tokenAddress: string | null; name: string | null } | null {
+  const match = listings.find(
+    (entry) =>
+      nonEmptyString(entry.underlyingTicker)?.toUpperCase() === symbol.toUpperCase() &&
+      nonEmptyString(entry.binanceChainId) === String(BINANCE_CHAIN_ID),
+  );
+
+  if (!match) return null;
+
+  return {
+    tokenAddress: nonEmptyString(match.tokenContractAddress),
+    name: nonEmptyString(match.tokenName) ?? nonEmptyString(match.underlyingName),
+  };
+}
+
+/**
+ * Reads one `/price` payload.
+ *
+ *   {"code":0,"msg":"success","data":[{"binanceChainId":"56",
+ *     "tokenContractAddress":"0x9aee…f75f","platformId":"ondo",
+ *     "tokenPrice":"231.210905150846385687","referencePrice":"230.815",
+ *     "tokenPriceUpdatedAt":1791661578408}]}
+ *
+ * Two prices arrive in one response and they are not the same number, which is
+ * the whole reason this reads a named field rather than a plausible one:
+ *
+ *   - `referencePrice` (230.815) is the underlying company's own market price.
+ *     That is the figure this interface publishes, and the one its column is
+ *     labelled as being.
+ *   - `tokenPrice` (231.210905150846385687) is the tokenized asset's own traded
+ *     price — eighteen decimals of a related but different thing.
+ *
+ * The walker this replaces would have found `referencePrice` too, because the
+ * name was in its candidate list, so nothing was visibly broken. It would have
+ * gone on being right until a payload carried a field called `price` beside it,
+ * and then a figure with no provenance would have appeared in a column that
+ * promises one.
+ *
+ * Exported for the test that pins which of the two it reads.
+ */
+export function readPriceResult(payload: unknown): number | null {
+  const rows = Array.isArray(payload) ? payload.filter(isRecord) : [];
+
+  // Asked about one address, this answers with one row — but the chain is what
+  // identifies which price is which, so it is matched rather than assumed.
+  const row =
+    rows.find((entry) => nonEmptyString(entry.binanceChainId) === String(BINANCE_CHAIN_ID)) ??
+    rows[0];
+
+  return toNumber(row?.referencePrice);
+}
+
+/** The attestation reports the profile endpoint names, and how to label them. */
+const ATTESTATIONS: ReadonlyArray<readonly [string, string]> = [
+  ['dailyAttestationReport', 'Daily attestation report'],
+  ['monthlyAttestationReport', 'Monthly attestation report'],
+];
+
+/**
+ * Reads one `/underlying-profile` payload.
+ *
+ *   {"code":0,"msg":"success","data":{"binanceChainId":"56",
+ *     "tokenContractAddress":"0x9aee…f75f","platformId":"ondo",
+ *     "underlyingTicker":"NVDA","underlyingFullName":"NVIDIA (Ondo)",
+ *     "assetType":"1","tokenToShareRatio":"1.0017152487959898",
+ *     "protections":{"dailyAttestationReport":{"supported":true,
+ *       "description":null,"url":"https://…/daily-2026-10-07.pdf"}, …}}}
+ *
+ * `data` is an object here where `/search` and `/price` return an array, in the
+ * same version of the same API family. That is not a detail worth smoothing over:
+ * it is what a client has to be written against.
+ *
+ * A report is listed only when the issuer both says it supports one and supplies
+ * a URL. `supported: true` with a null link is the API describing an arrangement
+ * rather than a document, and a link to nothing is worse than no link.
+ *
+ * Exported for the test that pins the attestation filter.
+ */
+export function readProfileResult(
+  payload: unknown,
+  symbol: string,
+  fallbackName: string | null,
+): UnderlyingProfile {
+  const data = isRecord(payload) ? payload : {};
+  const protections = isRecord(data.protections) ? data.protections : {};
+
+  const attestations = ATTESTATIONS.flatMap(([key, label]): Array<{ label: string; url: string }> => {
+    const report = protections[key];
+    if (!isRecord(report) || report.supported !== true) return [];
+    const url = nonEmptyString(report.url);
+    return url ? [{ label, url }] : [];
+  });
+
+  return {
+    symbol,
+    // The endpoint's full name first: `NVIDIA (Ondo)` names who tokenized it,
+    // which is a fact about this asset that `Nvidia Corp` does not carry.
+    name: nonEmptyString(data.underlyingFullName) ?? fallbackName,
+    platform: nonEmptyString(data.platformId),
+    tokenToShareRatio: toNumber(data.tokenToShareRatio),
+    attestations,
+    marketCap: null,
+  };
+}
+
+/**
+ * Resolves a ticker to the token this chain lists it as.
+ *
+ * The catalogue is tried first because it costs one request for the whole
+ * deployment where `/search` costs one per ticker, and an address is the only
+ * thing the price call actually needs. It is also the reason `/search` is still
+ * here: a ticker the catalogue does not carry — because the API does not list it,
+ * or because the catalogue is paginated and it is on a page we did not get — is
+ * resolved the direct way, which is a request that only the miss pays for.
+ */
 export async function searchUnderlying(symbol: string): Promise<BinanceResult<ReferencePrice>> {
   const cached = searchCache.get(symbol);
   if (cached) return { ok: true, data: cached };
+
+  const listings = await catalogueListings();
+  if (listings.ok) {
+    const match = catalogueMatch(listings.data, symbol);
+    if (match?.tokenAddress) {
+      const fromCatalogue: ReferencePrice = {
+        symbol,
+        price: null,
+        name: match.name,
+        tokenAddress: match.tokenAddress,
+      };
+      searchCache.set(symbol, fromCatalogue);
+      return { ok: true, data: fromCatalogue };
+    }
+  }
 
   const result = await binanceGet<unknown>(ENDPOINTS.search, {
     binanceChainId: BINANCE_CHAIN_ID,
@@ -244,11 +415,16 @@ export async function searchUnderlying(symbol: string): Promise<BinanceResult<Re
 /**
  * Reference prices for a list of tickers.
  *
- * Two requests per ticker, not one: `/price` is keyed by contract address and
- * answers `40001` to a ticker, so the search call has to run first. It is cached
- * for the life of the process, so the second and later pages pay for the price
- * call only. Neither endpoint documents a batch form, which is itself a finding —
- * a deployment holding eight components makes eight round trips per feed.
+ * One request per ticker, plus one for the catalogue: `/price` is keyed by
+ * contract address and answers `40001` to a ticker, so an address has to be
+ * resolved first, and `searchUnderlying` resolves all of them out of a single
+ * `/tokens` call wherever it can. Nine requests for eight components rather than
+ * seventeen, against an API that turned out to have a burst limit it does not
+ * document.
+ *
+ * `/price` takes `tokenContractAddresses`, plural, which raises the obvious
+ * question of whether one call could price a whole basket at once. That is worth
+ * trying and it has not been tried; a single address is what is known to work.
  */
 export async function referencePrices(
   symbols: readonly string[],
@@ -298,14 +474,14 @@ export async function referencePrices(
       continue;
     }
 
-    // The price body has not been seen, so the readers walk it — but the name and
-    // address are already known from the search, and falling back to those means
-    // an unexpected field name costs a column rather than a row.
     prices.push({
       symbol,
-      price: firstNumber(result.data, PRICE_KEYS),
-      name: firstString(result.data, NAME_KEYS) ?? name,
-      tokenAddress: firstString(result.data, ADDRESS_KEYS) ?? tokenAddress,
+      price: readPriceResult(result.data),
+      // Carried across from the resolution rather than looked for again: the
+      // price payload has been read and it carries neither a name nor anything
+      // this row needs beyond the number.
+      name,
+      tokenAddress,
     });
   }
 
@@ -322,10 +498,14 @@ export async function referencePrices(
  * The company behind a ticker, from the profile and fundamentals endpoints.
  *
  * Both are keyed by contract address rather than by ticker: handed a symbol they
- * answer `40001 Parameter tokenContractAddress is required`. So the ticker is
- * resolved through `rwa/search` first — the only one of the five that accepts a
- * human-readable name — and the address it returns is what the other two are
- * asked about. That makes the search call load-bearing rather than decorative.
+ * answer `40001 Parameter tokenContractAddress is required`, so the ticker is
+ * resolved first. `searchUnderlying` does that out of the cached catalogue without
+ * a request of its own, which is what keeps this pair of calls from being a trio.
+ *
+ * `/underlying-profile` turns out to hold the more interesting half — who issues
+ * the tokenized form, the token-to-share ratio, and the attestation reports the
+ * issuer publishes — so the returned shape follows it rather than the company
+ * blurb it was originally written to expect.
  */
 export async function underlyingProfile(symbol: string): Promise<BinanceResult<UnderlyingProfile>> {
   const resolved = await searchUnderlying(symbol);
@@ -354,16 +534,10 @@ export async function underlyingProfile(symbol: string): Promise<BinanceResult<U
   return {
     ok: true,
     data: {
-      symbol,
-      name: firstString(profile.data, NAME_KEYS),
-      description: firstString(profile.data, [
-        'description',
-        'businessSummary',
-        'overview',
-        'about',
-      ]),
-      sector: firstString(profile.data, ['sector']),
-      industry: firstString(profile.data, ['industry']),
+      ...readProfileResult(profile.data, symbol, resolved.data.name),
+      // `/underlying-market` is the one body still unread — the probe that first
+      // reached it drew `42900 Rate limit exceeded` — so this stays a walker, and
+      // it is the only place in the file that still is one.
       marketCap: market.ok
         ? firstNumber(market.data, ['marketCap', 'marketCapUsd', 'mcap', 'capitalization'])
         : null,
@@ -384,21 +558,10 @@ export async function underlyingProfile(symbol: string): Promise<BinanceResult<U
  * showing the catalogue itself — would be a new surface rather than a fifth call.
  */
 export async function listedTokens(): Promise<BinanceResult<number>> {
-  const result = await binanceGet<unknown>(ENDPOINTS.tokens, { binanceChainId: BINANCE_CHAIN_ID });
-  if (!result.ok) return result;
+  // The same call `searchUnderlying` resolves addresses from, so the count and
+  // the resolution share one request rather than making two.
+  const listings = await catalogueListings();
+  if (!listings.ok) return listings;
 
-  // The envelope has been seen — `data` is the array of listings — so this counts
-  // it rather than searching the payload for something array-shaped. Answering
-  // `0` for an unrecognised shape would render as "holds 0 tokenized stocks",
-  // which is a claim about the API rather than about this reader.
-  if (!Array.isArray(result.data)) {
-    return {
-      ok: false,
-      reason: 'malformed',
-      status: 0,
-      message: 'The /tokens payload did not contain the array of listings it has returned before.',
-    };
-  }
-
-  return { ok: true, data: result.data.length };
+  return { ok: true, data: listings.data.length };
 }
