@@ -25,12 +25,16 @@ export interface ReferenceFeed {
   fetchedAt: string;
   prices: ReferencePrice[];
   /**
-   * How many tokenized stocks the API's catalogue holds, or `null` when the
-   * catalogue call did not answer.
+   * How many listings one `/tokens` call returned, or `null` when that call did
+   * not answer.
+   *
+   * Not the size of the API's catalogue: whether `/tokens` paginates has not been
+   * established, and a page size presented as a total would be a fact about this
+   * request wearing the label of a fact about the market.
    *
    * It is here to answer the question the reference column raises on its own:
    * a ticker with no price could be a ticker the API does not carry, or a price
-   * call that failed. A catalogue count distinguishes "this component has no
+   * call that failed. A listing count distinguishes "this component has no
    * listed counterpart" from "the API was unreachable", which is the difference
    * between a fact about the market and a fact about this deployment.
    */

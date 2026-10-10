@@ -124,9 +124,9 @@ export function SupportedAssets() {
           values assets from a mock feed of fixed numbers.
           {referenceFeed.listed === null
             ? ''
-            : ` The API's catalogue holds ${referenceFeed.listed} tokenized ${
+            : ` The API's listing endpoint returned ${referenceFeed.listed} tokenized ${
                 referenceFeed.listed === 1 ? 'stock' : 'stocks'
-              }.`}
+              } on this call.`}
         </p>
       ) : null}
 

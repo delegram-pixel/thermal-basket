@@ -20,8 +20,9 @@ import type { ReferenceFeed } from '@/lib/binance/wire.ts';
  * price it is being compared with, and serving a cached one would silently
  * compare two figures taken at different times.
  *
- * It also returns the size of the API's tokenized-stock catalogue, so a row with
- * no reference price can be read against how many listings exist at all.
+ * It also returns how many listings one call to the API's token catalogue
+ * endpoint returned, so a row with no reference price can be read against how
+ * many listings the feed is seeing at all.
  */
 
 export const runtime = 'nodejs';

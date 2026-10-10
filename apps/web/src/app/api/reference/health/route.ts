@@ -50,21 +50,29 @@ export async function GET() {
     return Response.json(report, { headers: { 'cache-control': 'no-store' } });
   }
 
-  // The profile and fundamentals endpoints are keyed by contract address and
-  // answer `40001 Parameter tokenContractAddress is required` when handed a ticker.
-  // The probe resolves the ticker through the same helper the application uses, so
-  // what is exercised here is the path the product actually takes. When resolution
-  // fails the probe still runs and the endpoint's own complaint is what appears —
-  // worth seeing rather than hiding.
+  // Three of the five endpoints are keyed by contract address and refuse a
+  // ticker: `/price` answers `40001 Parameter tokenContractAddresses is required`
+  // and the two profile endpoints want the same thing in the singular. The probe
+  // resolves the ticker through the same helper the application uses, so what is
+  // exercised here is the path the product actually takes. When resolution fails
+  // the probes still run and the endpoint's own complaint is what appears — worth
+  // seeing rather than hiding.
   const resolved = await searchUnderlying(PROBE_SYMBOL);
-  const addressParams: Record<string, string | number> =
-    resolved.ok && resolved.data.tokenAddress
-      ? { binanceChainId: BINANCE_CHAIN_ID, tokenContractAddress: resolved.data.tokenAddress }
-      : { binanceChainId: BINANCE_CHAIN_ID };
+  const address = resolved.ok ? resolved.data.tokenAddress : null;
+
+  // The plural is the API's, not a typo here, and it is the reason this table
+  // carries two shapes instead of one. Both are spelled out rather than shared
+  // through a helper, so that a reader comparing them sees the difference.
+  const addressParams: Record<string, string | number> = address
+    ? { binanceChainId: BINANCE_CHAIN_ID, tokenContractAddress: address }
+    : { binanceChainId: BINANCE_CHAIN_ID };
+  const priceParams: Record<string, string | number> = address
+    ? { binanceChainId: BINANCE_CHAIN_ID, tokenContractAddresses: address }
+    : { binanceChainId: BINANCE_CHAIN_ID };
 
   const targets: Array<[string, Record<string, string | number>]> = [
     [ENDPOINTS.search, { binanceChainId: BINANCE_CHAIN_ID, keyword: PROBE_SYMBOL }],
-    [ENDPOINTS.price, { binanceChainId: BINANCE_CHAIN_ID, symbol: PROBE_SYMBOL }],
+    [ENDPOINTS.price, priceParams],
     [ENDPOINTS.tokens, { binanceChainId: BINANCE_CHAIN_ID }],
     [ENDPOINTS.profile, addressParams],
     [ENDPOINTS.market, addressParams],
