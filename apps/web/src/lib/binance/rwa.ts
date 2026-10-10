@@ -26,6 +26,9 @@ import { binanceGet, type BinanceFailure, type BinanceResult } from './client.ts
  *   - A five-request probe drew `42900 Rate limit exceeded` on its fifth call,
  *     which is why resolution now comes out of the one-shot `/tokens` catalogue
  *     rather than one `/search` per ticker.
+ *   - `/underlying-market` publishes a `referencePrice` that disagrees with the
+ *     `referencePrice` `/price` returns for the same token moments apart, and says
+ *     nothing about which of the two it means. It is read and deliberately unused.
  *
  * This file began as an exercise in not knowing. The first version walked every
  * payload looking for a price under any of eight plausible field names, a company
@@ -36,37 +39,11 @@ import { binanceGet, type BinanceFailure, type BinanceResult } from './client.ts
  * parameter as required. That reads as their bug rather than ours, which is how it
  * read for a day.
  *
- * Four of the five bodies have now been seen and are indexed by name. The fifth,
- * `/underlying-market`, has not — the probe that reached it was the one that got
- * rate-limited — so one field keeps a walker, confined to the function that needs
- * it.
+ * All five bodies have now been seen, so all five are indexed by name and there is
+ * no walker left here. What made the difference was not a better set of candidates
+ * but seeing one response — which is the note this section exists to leave for
+ * whoever writes the next client against a body nobody has documented.
  */
-
-/**
- * Depth-limited walk over a payload whose shape is not known.
- *
- * Used by {@link firstNumber} and nothing else, for the one field belonging to
- * `/underlying-market`, the only body this integration has never seen. Deep enough
- * for the envelopes this API uses, and bounded so a self-referencing payload
- * cannot spin.
- */
-function walk(value: unknown, visit: (node: Record<string, unknown>) => boolean, depth = 0): void {
-  if (depth > 4 || value === null || typeof value !== 'object') return;
-
-  if (Array.isArray(value)) {
-    for (const item of value) {
-      if (visit(item as Record<string, unknown>)) return;
-      walk(item, visit, depth + 1);
-    }
-    return;
-  }
-
-  const node = value as Record<string, unknown>;
-  if (visit(node)) return;
-  for (const child of Object.values(node)) {
-    if (child && typeof child === 'object') walk(child, visit, depth + 1);
-  }
-}
 
 /** A finite number from a JSON value that may be a number or a numeric string.
  *  This API sends both, sometimes in the same object: `referencePrice` is the
@@ -74,29 +51,6 @@ function walk(value: unknown, visit: (node: Record<string, unknown>) => boolean,
 function toNumber(value: unknown): number | null {
   const parsed = typeof value === 'string' ? Number(value) : value;
   return typeof parsed === 'number' && Number.isFinite(parsed) ? parsed : null;
-}
-
-/**
- * The first finite number filed under any of `keys`, anywhere in the payload.
- *
- * The last walker left in the file, and it exists for exactly one field:
- * `/underlying-market` has not been read.
- */
-function firstNumber(payload: unknown, keys: readonly string[]): number | null {
-  let found: number | null = null;
-
-  walk(payload, (node) => {
-    for (const key of keys) {
-      const parsed = toNumber(node[key]);
-      if (parsed !== null) {
-        found = parsed;
-        return true;
-      }
-    }
-    return false;
-  });
-
-  return found;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -146,8 +100,18 @@ export interface UnderlyingProfile {
   tokenToShareRatio: number | null;
   /** Proof-of-backing reports the issuer publishes, as links. */
   attestations: ReadonlyArray<{ label: string; url: string }>;
-  /** From `/underlying-market`, whose body has not been seen. */
+  /** From `/underlying-market`. */
   marketCap: number | null;
+  /**
+   * The underlying exchange's session, as the API words it — `offhours` on a
+   * Saturday, which is when this was captured.
+   *
+   * Carried because it is the only thing in the integration that dates the
+   * reference price. When the session is not open, that figure is the last close
+   * rather than a live quote, and a surface that shows the number without the word
+   * is claiming a freshness it does not have.
+   */
+  marketStatus: string | null;
 }
 
 /** The endpoints this integration calls, named once so the UI and README agree. */
@@ -351,12 +315,14 @@ export function readProfileResult(
   const data = isRecord(payload) ? payload : {};
   const protections = isRecord(data.protections) ? data.protections : {};
 
-  const attestations = ATTESTATIONS.flatMap(([key, label]): Array<{ label: string; url: string }> => {
-    const report = protections[key];
-    if (!isRecord(report) || report.supported !== true) return [];
-    const url = nonEmptyString(report.url);
-    return url ? [{ label, url }] : [];
-  });
+  const attestations = ATTESTATIONS.flatMap(
+    ([key, label]): Array<{ label: string; url: string }> => {
+      const report = protections[key];
+      if (!isRecord(report) || report.supported !== true) return [];
+      const url = nonEmptyString(report.url);
+      return url ? [{ label, url }] : [];
+    },
+  );
 
   return {
     symbol,
@@ -366,7 +332,52 @@ export function readProfileResult(
     platform: nonEmptyString(data.platformId),
     tokenToShareRatio: toNumber(data.tokenToShareRatio),
     attestations,
+    // Filled by `underlyingProfile` from the other endpoint. This reader sees one
+    // payload and has no market in it, so it says so rather than guessing.
     marketCap: null,
+    marketStatus: null,
+  };
+}
+
+/**
+ * Reads one `/underlying-market` payload — the last body this integration saw.
+ *
+ *   {"code":0,"msg":"success","data":{"binanceChainId":"56",
+ *     "tokenContractAddress":"0x9aee…f75f","platformId":"ondo","assetType":"1",
+ *     "statusInfo":{"openState":true,"marketStatus":"offhours",
+ *       "reasonCode":"TRADING","reasonMessage":null,"nextOpenTime":"1791762900000"},
+ *     "marketData":{"referencePrice":"230.349893","high52w":"243.37",
+ *       "low52w":"164.27","volumeShares24H":"8464559.605683","avgDailyVolume1Y":"…",
+ *       "totalShares":"24147000000","marketCa…}}}}
+ *
+ * `data` is an object here, as it is in `/underlying-profile`, and an array in the
+ * other three. Two shapes across five endpoints of one API, in one version.
+ *
+ * Two spellings are accepted for the market capitalisation and nowhere else. The
+ * capture of this body was cut off mid-key at `"marketCa`, so `marketCap` and
+ * `marketCapUsd` cannot be told apart from the evidence — this is the one name in
+ * this file that is inferred rather than seen, and it is confined to a known
+ * object instead of searched for across the payload.
+ *
+ * Note what is *not* read: `marketData.referencePrice`, which is present and
+ * differs from the `referencePrice` `/price` returns for the same token moments
+ * apart (230.349893 against 230.705). Two endpoints publish a field of the same
+ * name with different values and neither says why, so taking one silently would
+ * be a coin toss dressed as a reading. The price column keeps its single source.
+ *
+ * Exported for the test that pins the market capitalisation.
+ */
+export function readMarketResult(payload: unknown): {
+  marketCap: number | null;
+  marketStatus: string | null;
+} {
+  const data = isRecord(payload) ? payload : {};
+  const marketData = isRecord(data.marketData) ? data.marketData : {};
+  const statusInfo = isRecord(data.statusInfo) ? data.statusInfo : {};
+
+  return {
+    marketCap: toNumber(marketData.marketCap ?? marketData.marketCapUsd),
+    marketStatus: nonEmptyString(statusInfo.marketStatus),
   };
 }
 
@@ -535,12 +546,10 @@ export async function underlyingProfile(symbol: string): Promise<BinanceResult<U
     ok: true,
     data: {
       ...readProfileResult(profile.data, symbol, resolved.data.name),
-      // `/underlying-market` is the one body still unread — the probe that first
-      // reached it drew `42900 Rate limit exceeded` — so this stays a walker, and
-      // it is the only place in the file that still is one.
-      marketCap: market.ok
-        ? firstNumber(market.data, ['marketCap', 'marketCapUsd', 'mcap', 'capitalization'])
-        : null,
+      // A failed market call costs the market capitalisation and the session
+      // status, not the profile: the two requests are independent and either is
+      // worth showing without the other.
+      ...(market.ok ? readMarketResult(market.data) : { marketCap: null, marketStatus: null }),
     },
   };
 }

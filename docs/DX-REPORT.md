@@ -92,13 +92,13 @@ it is not a diagnostic.
 
 All RWA Data, against `https://web3.binance.com`, all with `binanceChainId=56`:
 
-| Endpoint | Query parameters | Used for |
-| --- | --- | --- |
-| `GET /api/v1/dex/market/rwa/tokens` | `binanceChainId` | The catalogue. One call returns every listing, which resolves all of a basket's tickers to contract addresses at once — and supplies the count shown beside the reference column. |
-| `GET /api/v1/dex/market/rwa/price` | `binanceChainId`, `tokenContractAddresses` | The reference price for a resolved token. |
-| `GET /api/v1/dex/market/rwa/search` | `binanceChainId`, `keyword` | Resolving a human-readable ticker to a listing. The fallback when the catalogue does not carry a ticker, and the only endpoint that accepts one. |
-| `GET /api/v1/dex/market/rwa/underlying-profile` | `binanceChainId`, `tokenContractAddress` | Who issues the tokenized form, the token-to-share ratio, and links to the issuer's attestation reports. |
-| `GET /api/v1/dex/market/rwa/underlying-market` | `binanceChainId`, `tokenContractAddress` | Market capitalisation, fetched alongside the profile. |
+| Endpoint                                        | Query parameters                           | Used for                                                                                                                                                                          |
+| ----------------------------------------------- | ------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /api/v1/dex/market/rwa/tokens`             | `binanceChainId`                           | The catalogue. One call returns every listing, which resolves all of a basket's tickers to contract addresses at once — and supplies the count shown beside the reference column. |
+| `GET /api/v1/dex/market/rwa/price`              | `binanceChainId`, `tokenContractAddresses` | The reference price for a resolved token.                                                                                                                                         |
+| `GET /api/v1/dex/market/rwa/search`             | `binanceChainId`, `keyword`                | Resolving a human-readable ticker to a listing. The fallback when the catalogue does not carry a ticker, and the only endpoint that accepts one.                                  |
+| `GET /api/v1/dex/market/rwa/underlying-profile` | `binanceChainId`, `tokenContractAddress`   | Who issues the tokenized form, the token-to-share ratio, and links to the issuer's attestation reports.                                                                           |
+| `GET /api/v1/dex/market/rwa/underlying-market`  | `binanceChainId`, `tokenContractAddress`   | The underlying's market capitalisation and its exchange session (`marketStatus`), shown beside the profile. Its own `referencePrice` is deliberately not used — see finding 6.    |
 
 ---
 
@@ -121,6 +121,23 @@ way the API spells it. Every parameter bug in this integration was found by
 reading one of these and changing exactly what it said. It is the single reason
 the last stage of this build went quickly, and it is the yardstick `40304` fails
 against.
+
+**`statusInfo` is a genuinely thoughtful field, and it is the reason prices can be
+shown honestly.** `/underlying-market` carries the underlying exchange's session
+alongside its figures:
+
+```json
+"statusInfo": { "openState": true, "marketStatus": "offhours",
+                "reasonCode": "TRADING", "nextOpenTime": "1791762900000" }
+```
+
+A reference price means something different when the market it refers to is closed:
+it is a last close rather than a live quote. Very few market data APIs tell you
+that, and the ones that do usually make you infer it from a timestamp. This one
+states it, in a field with a name you can guess right the first time. A client that
+ignores `statusInfo` will present a stale price as a current one — which is exactly
+the kind of mistake the field exists to prevent, and it is a mistake I would have
+made without it.
 
 **Numeric error codes are the right choice.** `40102`, `40001`, `40304`, `42900`
 are greppable. They survive being pasted into a search box, they survive being
@@ -381,23 +398,48 @@ and my key-walker would have picked `referencePrice` only because the name happe
 to be in its list. Had the payload also carried a field called `price`, a figure
 with no provenance would have appeared in a column that promises one. I have since
 replaced the walker with a fixed read of `referencePrice` and a comment saying why,
-and four of the five payloads are now read by name. The fifth,
-`/underlying-market`, still has a walker, because it has still never returned a
-body — see below.
+and once `/underlying-market` finally returned a body — on the fifth attempt, an
+afternoon later — all five payloads were read by name. There is no walker left in
+the client.
 
 This is the one place where I think a documentation gap is doing real damage rather
 than costing time. A single realistic success sample per endpoint would have
 replaced a day of guessing, and it would have prevented a bug that produced no
 error message at all.
 
+**The same field name, two different prices.** When `/underlying-market` finally
+answered, it carried this:
+
+```json
+"marketData": { "referencePrice": "230.349893", "high52w": "243.37", "low52w": … }
+```
+
+`/price` had returned `"referencePrice": "230.705"` for the same token, at the same
+contract address, minutes earlier. One field name, two endpoints, two values, and
+nothing in either response explaining the difference — whether they are struck at
+different times, from different sources, or one is a close and one is a mid. The
+gap is small enough that a client would never notice it and large enough that a
+column labelled "reference price" cannot honestly show whichever arrived first.
+
+I resolved this by **not using it**. `/underlying-market` is read for the market
+capitalisation and the session status, and its `referencePrice` is deliberately
+ignored, with a test asserting the reader returns no price at all — so that
+whoever adds one back has to write down which source it came from. That is a
+reasonable outcome for a client and a poor one for an API: it means one of the two
+fields is decorative.
+
 ### 7. The rate limit is undocumented, and it is tight enough to bite a health check
 
-`/underlying-market` is the one endpoint I still cannot describe, because the first
-probe that reached it returned:
+The first probe that reached `/underlying-market` returned:
 
 ```
 HTTP 429   {"code":42900,"timestamp":1791661581662,"msg":"Rate limit exceeded","data":""}
 ```
+
+It cleared on its own. Reloading the same panel some hours later returned the
+`/underlying-market` body that this report now quotes — so the limit is a burst
+window rather than a quota, which is a useful thing to know and not something the
+response says.
 
 The probe that hit it was **five sequential requests** taking 573 ms in total —
 roughly nine requests per second. The first four succeeded; the fifth was refused.
@@ -446,22 +488,22 @@ encoding costs a request against a limit I cannot measure. See finding 5.
 
 ## Metrics
 
-|                                            |                                                                     |
-| ------------------------------------------ | ------------------------------------------------------------------- |
-| Endpoints integrated                       | 5 (all RWA Data)                                                    |
-| Endpoints returning data                   | **5 of 5** (after the function region was moved)                     |
-| Responses from the local machine           | **0 of 5** — connect timeouts, `HTTP 000`                            |
-| Responses from Vercel, default region      | **5 of 5**, in 170–380 ms, all `40304`                               |
-| Responses from Vercel, `sin1`              | **5 of 5**, in 82–197 ms, 4 with data and 1 `42900`                  |
-| Distinct error codes observed              | 5 — `40102`, `40103`, `40001`, `40304`, `42900`                      |
-| Success envelopes read exactly             | 4 of 5 (all but `/underlying-market`)                                |
-| Time to diagnose the `/build` trap         | Avoided by reading; the docs do describe it                          |
-| Time lost to `40103`-as-missing-key        | The largest single block of debugging in the integration             |
-| Time lost to the unreachable host          | Roughly a working day, before the control request identified it      |
-| Time lost to `40304`                       | Most of a day, resolved by moving the function region                |
-| Time lost to a silently-wrong field name   | A day — no error was produced; the reader returned `null` in silence |
-| Requests to render one 8-component table   | 9 (was 17 before `/tokens` was used for resolution)                  |
-| Rate limits encountered                    | 1 — `42900` on the fifth request of a five-request health probe      |
+|                                          |                                                                       |
+| ---------------------------------------- | --------------------------------------------------------------------- |
+| Endpoints integrated                     | 5 (all RWA Data)                                                      |
+| Endpoints returning data                 | **5 of 5** (after the function region was moved)                      |
+| Responses from the local machine         | **0 of 5** — connect timeouts, `HTTP 000`                             |
+| Responses from Vercel, default region    | **5 of 5**, in 170–380 ms, all `40304`                                |
+| Responses from Vercel, `sin1`            | **5 of 5**, in 82–197 ms, every one of them with data after the retry |
+| Distinct error codes observed            | 5 — `40102`, `40103`, `40001`, `40304`, `42900`                       |
+| Success envelopes read exactly           | 5 of 5 — no key-walker remains in the client                          |
+| Time to diagnose the `/build` trap       | Avoided by reading; the docs do describe it                           |
+| Time lost to `40103`-as-missing-key      | The largest single block of debugging in the integration              |
+| Time lost to the unreachable host        | Roughly a working day, before the control request identified it       |
+| Time lost to `40304`                     | Most of a day, resolved by moving the function region                 |
+| Time lost to a silently-wrong field name | A day — no error was produced; the reader returned `null` in silence  |
+| Requests to render one 8-component table | 9 (was 17 before `/tokens` was used for resolution)                   |
+| Rate limits encountered                  | 1 — `42900` on the fifth request of a five-request health probe       |
 
 ---
 
@@ -484,10 +526,11 @@ It is marked down for four things, all about what happens when something is wron
    happening. The cause turned out to be the function region, and an error that
    said so would have saved a day.
 2. **The success envelope is undocumented, and its field names are unguessable.**
-   Arrays in three endpoints and an object in a fourth, product names rather than
-   schema names, and two similarly-named prices in one response. I shipped a
-   knowingly-defensive parser for a week because of this, and that parser concealed
-   a bug that produced no error at all.
+   An array in three endpoints and an object in the other two, with nothing
+   announcing the switch; product names rather than schema names; and two
+   differently-sourced prices sharing one field name across two endpoints. I shipped
+   a knowingly-defensive parser for a week because of this, and that parser
+   concealed a bug that produced no error at all.
 3. **The rate limit is undocumented and low enough to interrupt a health check.**
    No headers, no window, no scope — and the fifth of five sequential requests was
    refused.
@@ -536,6 +579,14 @@ slow, unreliable or badly scoped — it is about what it declines to tell you.
    object where the other endpoints return an array, and say explicitly that
    `/price` carries both `tokenPrice` and `referencePrice` and what the difference
    is.
+
+   **Add one line explaining the two `referencePrice` fields.** `/price` and
+   `/underlying-market` both return a field called `referencePrice` for the same
+   token, and on the same afternoon they disagreed: `230.705` against `230.349893`.
+   Either name one of them differently, or say which is authoritative and why they
+   can differ — a different sampling time, a different venue, a close rather than a
+   quote. As it stands, a client has to pick one and cannot defend the choice, and
+   the one that loses is effectively dead weight in the schema.
 
 6. **Rename `tokenContractAddresses` to `tokenContractAddress`, or rename the
    other two to match.** Three sibling endpoints, one concept, two spellings.

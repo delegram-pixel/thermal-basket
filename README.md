@@ -20,13 +20,13 @@ derived from what the contract holds, not from a number a backend asserts.
 
 ## Links
 
-|                                        |                                                                     |
-| -------------------------------------- | ------------------------------------------------------------------- |
-| **Deployed application**               | https://thermal-basket.vercel.app                                   |
-| **Binance Web3 API diagnostics**       | https://thermal-basket.vercel.app/diagnostics                       |
-| **Demo video**                         | _link to be added before submission_                                |
-| **Source**                             | https://github.com/delegram-pixel/thermal-basket                    |
-| **Developer experience report**        | [docs/DX-REPORT.md](docs/DX-REPORT.md)                              |
+|                                  |                                                  |
+| -------------------------------- | ------------------------------------------------ |
+| **Deployed application**         | https://thermal-basket.vercel.app                |
+| **Binance Web3 API diagnostics** | https://thermal-basket.vercel.app/diagnostics    |
+| **Demo video**                   | _link to be added before submission_             |
+| **Source**                       | https://github.com/delegram-pixel/thermal-basket |
+| **Developer experience report**  | [docs/DX-REPORT.md](docs/DX-REPORT.md)           |
 
 `/diagnostics` is worth opening first. It calls all five Binance Web3 API
 endpoints the application uses, live, and prints each one's status, latency, error
@@ -156,13 +156,13 @@ Five RWA Data endpoints, against `https://web3.binance.com`, all with
 `binanceChainId=56`. The parameter is `binanceChainId`, not `chainId` — the API
 names it in the `40001` it returns if you get it wrong:
 
-| Endpoint | Query parameters | What this application uses it for |
-| --- | --- | --- |
-| `GET /api/v1/dex/market/rwa/tokens` | `binanceChainId` | The catalogue. One call returns every listing, which is how a whole basket's tickers are resolved to contract addresses — and the count it returns is shown beside the reference column, so a row with no price can be read against how many listings the feed is seeing. |
-| `GET /api/v1/dex/market/rwa/price` | `binanceChainId`, `tokenContractAddresses` | The reference price. Note the plural: the two endpoints below take `tokenContractAddress`, singular. |
-| `GET /api/v1/dex/market/rwa/search` | `binanceChainId`, `keyword` | Resolving a human-readable ticker to a listing. Nothing else among the five accepts a ticker. |
-| `GET /api/v1/dex/market/rwa/underlying-profile` | `binanceChainId`, `tokenContractAddress` | Who issues the tokenized form, the token-to-share ratio, and links to the attestation reports the issuer publishes as evidence the tokens are backed. |
-| `GET /api/v1/dex/market/rwa/underlying-market` | `binanceChainId`, `tokenContractAddress` | Market capitalisation, fetched alongside the profile. |
+| Endpoint                                        | Query parameters                           | What this application uses it for                                                                                                                                                                                                                                         |
+| ----------------------------------------------- | ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /api/v1/dex/market/rwa/tokens`             | `binanceChainId`                           | The catalogue. One call returns every listing, which is how a whole basket's tickers are resolved to contract addresses — and the count it returns is shown beside the reference column, so a row with no price can be read against how many listings the feed is seeing. |
+| `GET /api/v1/dex/market/rwa/price`              | `binanceChainId`, `tokenContractAddresses` | The reference price. Note the plural: the two endpoints below take `tokenContractAddress`, singular.                                                                                                                                                                      |
+| `GET /api/v1/dex/market/rwa/search`             | `binanceChainId`, `keyword`                | Resolving a human-readable ticker to a listing. Nothing else among the five accepts a ticker.                                                                                                                                                                             |
+| `GET /api/v1/dex/market/rwa/underlying-profile` | `binanceChainId`, `tokenContractAddress`   | Who issues the tokenized form, the token-to-share ratio, and links to the attestation reports the issuer publishes as evidence the tokens are backed.                                                                                                                     |
+| `GET /api/v1/dex/market/rwa/underlying-market`  | `binanceChainId`, `tokenContractAddress`   | The underlying's market capitalisation and its exchange session, shown beside the profile.                                                                                                                                                                                |
 
 Only `/search` and `/tokens` accept a ticker; the other three are keyed by contract
 address, so one is resolved first and those calls are made against it. None of them
@@ -252,13 +252,21 @@ because no authenticated success response had ever been observed. That defensive
 code concealed a real bug: the address list did not contain
 `tokenContractAddress`, so ticker resolution returned `null` on every call, in
 silence, and the only symptom was two endpoints reporting a parameter as required
-— which reads as the API's problem rather than the client's. Now that four of the
-five bodies have been seen they are read by name, and the readers are pinned by
-tests against the payloads the API actually sent. The fifth,
-`/underlying-market`, still walks its payload, because the first probe to reach it
-returned `42900 Rate limit exceeded` and it has not returned a body since. That is
-recorded as a finding in [docs/DX-REPORT.md](docs/DX-REPORT.md) rather than papered
-over.
+— which reads as the API's problem rather than the client's. All five bodies have
+now been seen, they are read by name, and every reader is pinned by tests against
+the payloads the API actually sent. No key-walker is left in the client.
+
+The last of the five, `/underlying-market`, took an afternoon to arrive because its
+first probe drew `42900 Rate limit exceeded`, and it changed two things when it
+did. It carries `statusInfo.marketStatus`, which is the only field in the whole
+integration that dates the reference price — when the underlying exchange is not
+trading, that figure is a last close rather than a live quote, and a surface that
+shows the number without the word is claiming a freshness it does not have. It also
+carries its own `referencePrice`, which **disagrees** with the one `/price`
+returns for the same token minutes apart (`230.349893` against `230.705`), with
+nothing in either response saying why. That field is read and deliberately not
+used. Both are recorded in [docs/DX-REPORT.md](docs/DX-REPORT.md) rather than
+papered over.
 
 ---
 

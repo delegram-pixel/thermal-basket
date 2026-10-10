@@ -101,6 +101,20 @@ export function UnderlyingProfiles({ symbols }: { symbols: readonly string[] }) 
                 </p>
               ) : null}
 
+              {/*
+                The underlying exchange's session, in the API's own word. It is not
+                translated because there is no vocabulary for it to be translated
+                into — `offhours` is the only value observed, and rendering an
+                unobserved one as "closed" would be this component asserting a
+                distinction the API might not be making. It is shown because it is
+                the one thing that dates the reference price elsewhere on this page:
+                when the underlying market is not trading, that figure is the last
+                close rather than a live quote.
+              */}
+              {profile.marketStatus !== null ? (
+                <p className="label">Underlying market {profile.marketStatus}</p>
+              ) : null}
+
               {profile.attestations.length > 0 ? (
                 <ul className="space-y-1">
                   {profile.attestations.map((report) => (

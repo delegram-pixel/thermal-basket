@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { BINANCE_CHAIN_ID } from './env.ts';
-import { readPriceResult, readProfileResult, readSearchResult } from './rwa.ts';
+import { readMarketResult, readPriceResult, readProfileResult, readSearchResult } from './rwa.ts';
 
 /**
  * The `/search` reader, pinned against the payload the API actually sent.
@@ -224,6 +224,95 @@ describe('readProfileResult', () => {
   it('survives a payload that is not the shape it expects', () => {
     for (const payload of [null, undefined, {}, 'nope', [], { protections: 'nope' }]) {
       expect(() => readProfileResult(payload, 'NVDA', null)).not.toThrow();
+    }
+  });
+});
+
+/**
+ * `/underlying-market` — the last body to arrive, and the only one that had to be
+ * fetched more than once. The probe that first reached it drew
+ * `42900 Rate limit exceeded`; the one that succeeded ran on 2026-10-10 at
+ * 21:28:52 UTC and is the source of everything below.
+ *
+ * One caveat about this fixture, stated rather than buried: the diagnostics panel
+ * truncates each body at 500 characters, and the cut fell in the middle of the
+ * market-capitalisation key — `"marketCa`. `marketStatus` is captured verbatim.
+ * The market cap is not: the key's spelling is unknowable from the evidence and
+ * its value was never seen, so the number below is a placeholder chosen to be
+ * unmistakable rather than plausible. Nothing here claims to know NVIDIA's market
+ * capitalisation, and a reader who finds `123456789` in this file should read it
+ * as the fixture admitting what it does not have.
+ */
+const NVDA_MARKET_RESPONSE = {
+  binanceChainId: '56',
+  tokenContractAddress: '0x9aee28c8bf960b889afdd190205218cba016f75f',
+  platformId: 'ondo',
+  assetType: '1',
+  statusInfo: {
+    openState: true,
+    marketStatus: 'offhours',
+    reasonCode: 'TRADING',
+    reasonMessage: null,
+    nextOpenTime: '1791762900000',
+  },
+  marketData: {
+    referencePrice: '230.349893',
+    high52w: '243.37',
+    low52w: '164.27',
+    volumeShares24H: '8464559.605683',
+    avgDailyVolume1Y: '160783246',
+    totalShares: '24147000000',
+    marketCap: '123456789',
+  },
+};
+
+describe('readMarketResult', () => {
+  it('reads the session status the API reported, in its own word', () => {
+    expect(readMarketResult(NVDA_MARKET_RESPONSE).marketStatus).toBe('offhours');
+  });
+
+  it('reads the market capitalisation out of marketData', () => {
+    expect(readMarketResult(NVDA_MARKET_RESPONSE).marketCap).toBe(123456789);
+  });
+
+  it('does not mistake a neighbouring figure for the market cap', () => {
+    // `totalShares` is 24147000000 and `avgDailyVolume1Y` is 160783246, both
+    // larger than the market cap in this fixture and both sitting in the same
+    // object. The reader this replaced walked the payload for any of four
+    // plausible names and would have returned the first number it met; the
+    // number that reaches a column has to be the one the field names.
+    const { marketCap } = readMarketResult(NVDA_MARKET_RESPONSE);
+
+    expect(marketCap).not.toBe(24147000000);
+    expect(marketCap).not.toBe(160783246);
+  });
+
+  it('accepts the other spelling of the market-cap key', () => {
+    // The truncation at `"marketCa` leaves `marketCap` and `marketCapUsd` equally
+    // consistent with what was seen, so both are read. This is the only name in
+    // the reader that is inferred, and it is bounded to a known object.
+    const payload = { marketData: { marketCapUsd: '987654321', totalShares: '1' } };
+
+    expect(readMarketResult(payload).marketCap).toBe(987654321);
+  });
+
+  it('returns no price, because two endpoints disagree about the price', () => {
+    // `marketData.referencePrice` is `230.349893` here and `/price` returned
+    // `230.705` for the same token minutes earlier — one field name, two
+    // endpoints, two values, no explanation. Reading either one silently would
+    // put a number in the price column that its own heading cannot justify, so
+    // this reader returns neither. If this assertion fails, someone has added a
+    // price back and owes the column an account of which source it is.
+    expect(Object.keys(readMarketResult(NVDA_MARKET_RESPONSE)).sort()).toEqual([
+      'marketCap',
+      'marketStatus',
+    ]);
+  });
+
+  it('returns null rather than zero when the payload is not the expected shape', () => {
+    for (const payload of [null, undefined, {}, 'nope', [], { marketData: 'nope' }]) {
+      expect(() => readMarketResult(payload)).not.toThrow();
+      expect(readMarketResult(payload)).toEqual({ marketCap: null, marketStatus: null });
     }
   });
 });
