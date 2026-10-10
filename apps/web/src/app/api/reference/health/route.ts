@@ -4,7 +4,7 @@ import {
   BINANCE_TIMEOUT_MS,
   readCredentials,
 } from '@/lib/binance/env.ts';
-import { ENDPOINTS } from '@/lib/binance/rwa.ts';
+import { ENDPOINTS, searchUnderlying } from '@/lib/binance/rwa.ts';
 import { signedPath } from '@/lib/binance/client.ts';
 import { preHash, sign } from '@/lib/binance/sign.ts';
 import type { HealthProbe, HealthReport } from '@/lib/binance/wire.ts';
@@ -50,12 +50,24 @@ export async function GET() {
     return Response.json(report, { headers: { 'cache-control': 'no-store' } });
   }
 
+  // The profile and fundamentals endpoints are keyed by contract address and
+  // answer `40001 Parameter tokenContractAddress is required` when handed a ticker.
+  // The probe resolves the ticker through the same helper the application uses, so
+  // what is exercised here is the path the product actually takes. When resolution
+  // fails the probe still runs and the endpoint's own complaint is what appears —
+  // worth seeing rather than hiding.
+  const resolved = await searchUnderlying(PROBE_SYMBOL);
+  const addressParams: Record<string, string | number> =
+    resolved.ok && resolved.data.tokenAddress
+      ? { binanceChainId: BINANCE_CHAIN_ID, tokenContractAddress: resolved.data.tokenAddress }
+      : { binanceChainId: BINANCE_CHAIN_ID };
+
   const targets: Array<[string, Record<string, string | number>]> = [
-    [ENDPOINTS.search, { chainId: BINANCE_CHAIN_ID, keyword: PROBE_SYMBOL }],
-    [ENDPOINTS.price, { chainId: BINANCE_CHAIN_ID, symbol: PROBE_SYMBOL }],
-    [ENDPOINTS.tokens, { chainId: BINANCE_CHAIN_ID }],
-    [ENDPOINTS.profile, { chainId: BINANCE_CHAIN_ID, symbol: PROBE_SYMBOL }],
-    [ENDPOINTS.market, { chainId: BINANCE_CHAIN_ID, symbol: PROBE_SYMBOL }],
+    [ENDPOINTS.search, { binanceChainId: BINANCE_CHAIN_ID, keyword: PROBE_SYMBOL }],
+    [ENDPOINTS.price, { binanceChainId: BINANCE_CHAIN_ID, symbol: PROBE_SYMBOL }],
+    [ENDPOINTS.tokens, { binanceChainId: BINANCE_CHAIN_ID }],
+    [ENDPOINTS.profile, addressParams],
+    [ENDPOINTS.market, addressParams],
   ];
 
   // Sequential rather than concurrent: this is a probe, and five simultaneous
@@ -122,7 +134,10 @@ async function probe(
       ms,
       ...(code ? { code } : {}),
       ...(message ? { message } : {}),
-      sample: text.slice(0, 240),
+      // 500 characters, not 240. The success envelope is what the readers in
+      // `rwa.ts` have to guess at, and a truncated search response can cut off
+      // before the field that matters.
+      sample: text.slice(0, 500),
     };
   } catch (error) {
     const timedOut = error instanceof Error && error.name === 'TimeoutError';

@@ -182,7 +182,14 @@ describe('AllocationLegend', () => {
       />,
     );
 
-    expect(screen.getByRole('cell', { name: '30%' })).toBeInTheDocument();
+    // Both components are published at 30% of a basket whose weights total 60%,
+    // so the band normalises them to half its width each. The legend must not
+    // follow it there: the number beside a component is its target weight, and 30
+    // is what the basket's own definition says. Asserting on every cell rather
+    // than on the first match, because "30%" appearing twice is the fixture —
+    // and 50%, the normalised width, is what must appear nowhere.
+    expect(screen.getAllByRole('cell', { name: '30%' })).toHaveLength(2);
+    expect(screen.queryAllByRole('cell', { name: '50%' })).toHaveLength(0);
   });
 
   it('renders an empty body rather than failing when there are no holdings', () => {

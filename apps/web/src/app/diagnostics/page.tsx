@@ -23,6 +23,12 @@ import type { HealthReport } from '@/lib/binance/wire.ts';
  *
  * It exposes no secret. The key is never echoed back, and the body excerpt is
  * truncated by the route before it is ever sent.
+ *
+ * The excerpt is rendered, not just fetched. The route has always returned it and
+ * this page used to drop it on the floor, which is why the success envelope went
+ * unobserved for so long: the shape was arriving on every successful call and
+ * being thrown away one layer above the screen. A probe panel that reports "the
+ * API said success" without showing what success looks like is not an instrument.
  */
 export default function DiagnosticsPage() {
   const report = useQuery({
@@ -120,6 +126,11 @@ export default function DiagnosticsPage() {
                           <span className="figure text-negative">code {probe.code} · </span>
                         ) : null}
                         {probe.message ?? '—'}
+                        {probe.sample ? (
+                          <code className="figure mt-1 block break-all text-[0.6875rem] leading-relaxed text-ink-faint">
+                            {probe.sample}
+                          </code>
+                        ) : null}
                       </td>
                     </tr>
                   ))}

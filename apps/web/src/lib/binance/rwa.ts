@@ -4,19 +4,23 @@ import { binanceGet, type BinanceFailure, type BinanceResult } from './client.ts
 /**
  * The RWA Data endpoints, and the normalising that sits between them and the UI.
  *
- * One caveat governs this whole file and it is better stated than hidden: the
- * response bodies have not been observed against a live authenticated call. The
- * network path to `web3.binance.com` was filtered — DNS first, then the
- * connection itself — for the entire window in which this was written, and every
- * probe attempted from the development machine either failed to resolve or hung
- * until it timed out. See the DX report.
+ * The history of this file explains why the readers below search rather than
+ * index, and it is worth one paragraph.
  *
- * So the field names below are candidates, not certainties, and the readers walk
- * the payload looking for any of them rather than indexing into a shape that was
- * guessed. That is defensive in a way a typed client should not have to be, and
- * it is the honest response to writing against unverified documentation. Every
- * reader returns `null` rather than throwing when it finds nothing, so an
- * unanticipated shape degrades to an empty column instead of a broken page.
+ * The host was unreachable from the development machine for the whole window in
+ * which this was written — DNS first, then the connection — so every request was
+ * signed and sent blind. The first answers arrived only from a deployment, and
+ * only once its functions ran outside a United States region, which the API
+ * refuses with `40304`. Two of the five endpoints have since returned real data,
+ * and the three that failed named the exact parameter they wanted — `40001
+ * Parameter binanceChainId is required` — which is how the query keys below were
+ * corrected from `chainId`.
+ *
+ * The readers still walk the payload looking for candidate keys rather than
+ * indexing into a shape taken on trust. That is defensive in a way a typed client
+ * should not have to be, and it is the honest response to having verified the
+ * transport before the body. Every reader returns `null` rather than throwing, so
+ * an unanticipated shape degrades to an empty column instead of a broken page.
  */
 
 /** Field names a price has plausibly been given. First match wins. */
@@ -166,7 +170,7 @@ export async function searchUnderlying(symbol: string): Promise<BinanceResult<Re
   if (cached) return { ok: true, data: cached };
 
   const result = await binanceGet<unknown>(ENDPOINTS.search, {
-    chainId: BINANCE_CHAIN_ID,
+    binanceChainId: BINANCE_CHAIN_ID,
     keyword: symbol,
   });
 
@@ -199,7 +203,7 @@ export async function referencePrices(
     const fromSearch = resolved.ok ? resolved.data : null;
 
     const result = await binanceGet<unknown>(ENDPOINTS.price, {
-      chainId: BINANCE_CHAIN_ID,
+      binanceChainId: BINANCE_CHAIN_ID,
       symbol,
     });
 
@@ -231,11 +235,35 @@ export async function referencePrices(
   return { ok: true, data: prices };
 }
 
-/** The company behind a ticker, from the profile and fundamentals endpoints. */
+/**
+ * The company behind a ticker, from the profile and fundamentals endpoints.
+ *
+ * Both are keyed by contract address rather than by ticker: handed a symbol they
+ * answer `40001 Parameter tokenContractAddress is required`. So the ticker is
+ * resolved through `rwa/search` first — the only one of the five that accepts a
+ * human-readable name — and the address it returns is what the other two are
+ * asked about. That makes the search call load-bearing rather than decorative.
+ */
 export async function underlyingProfile(symbol: string): Promise<BinanceResult<UnderlyingProfile>> {
+  const resolved = await searchUnderlying(symbol);
+  if (!resolved.ok) return resolved;
+
+  const tokenContractAddress = resolved.data.tokenAddress;
+  if (!tokenContractAddress) {
+    const failure: BinanceFailure = {
+      ok: false,
+      reason: 'rejected',
+      status: 0,
+      code: '40001',
+      message: `The API resolved no token contract address for ${symbol}, and the profile endpoints are keyed by address.`,
+    };
+    return failure;
+  }
+
+  const query = { binanceChainId: BINANCE_CHAIN_ID, tokenContractAddress };
   const [profile, market] = await Promise.all([
-    binanceGet<unknown>(ENDPOINTS.profile, { chainId: BINANCE_CHAIN_ID, symbol }),
-    binanceGet<unknown>(ENDPOINTS.market, { chainId: BINANCE_CHAIN_ID, symbol }),
+    binanceGet<unknown>(ENDPOINTS.profile, query),
+    binanceGet<unknown>(ENDPOINTS.market, query),
   ]);
 
   if (!profile.ok) return profile;
@@ -269,7 +297,7 @@ export async function underlyingProfile(symbol: string): Promise<BinanceResult<U
  * be a new surface rather than a fifth call.
  */
 export async function listedTokens(): Promise<BinanceResult<number>> {
-  const result = await binanceGet<unknown>(ENDPOINTS.tokens, { chainId: BINANCE_CHAIN_ID });
+  const result = await binanceGet<unknown>(ENDPOINTS.tokens, { binanceChainId: BINANCE_CHAIN_ID });
   if (!result.ok) return result;
   return { ok: true, data: records(result.data).length };
 }

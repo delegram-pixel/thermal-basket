@@ -179,23 +179,29 @@ it is not a client defect:
 HTTP 200 · code 40304 · Service not available due to compliance restriction
 ```
 
-All five endpoints returned that, from a serverless function in `iad1`. The
-transport, the path and the parameters were all correct — a malformed request
-returns `40102`, not a business code. Binance's RWA data is refused to a United
-States origin, which is expected for a tokenized-equity product rather than a
-bug. The deployment therefore pins its function region in `apps/web/vercel.json`:
+All five endpoints returned that, from a serverless function in Vercel's default
+region. The transport, the path and the parameters were all correct — a malformed
+request returns `40102`, not a business code. Binance's RWA data is refused to a
+United States origin, which is expected for a tokenized-equity product rather than
+a bug, so the deployment's Function Region is set to Singapore (`sin1`) in Project
+Settings, and `apps/web/vercel.json` records the same value in the repository:
 
 ```json
 { "regions": ["sin1"] }
 ```
 
-so the request leaves from outside the restricted region. It is set there rather
-than with the `preferredRegion` route segment config, which this version of Next
-has deprecated and which now accepts only `auto`, `global` and `home` — handing it
-a region code fails the deploy. `regions` in `vercel.json` overrides the Function
-Region in Project Settings, so the choice is version-controlled rather than living
-in a dashboard. See [docs/DX-REPORT.md](docs/DX-REPORT.md) for the full finding,
-including why `40304` is the least actionable code in the API.
+Both name `sin1`, so the choice survives either one changing. It is not set with
+the `preferredRegion` route segment config, which this version of Next has
+deprecated and which now accepts only `auto`, `global` and `home` — handing it a
+region code fails the deploy.
+
+Moving the region worked, and it is the difference between this integration having
+no data and having some: `40304` disappeared on the next probe, and two of the five
+endpoints began returning real bodies. The remaining failures were then ours, and
+the API named them precisely — `40001 Parameter binanceChainId is required`, where
+we had been sending `chainId`. See [docs/DX-REPORT.md](docs/DX-REPORT.md) for the
+full finding, including why `40304` is the least actionable code in the API and
+why `40001` shows the API can be specific when it wants to be.
 
 `/diagnostics` calls all five endpoints and prints each one's status, latency,
 error code and a truncated body excerpt. It exists because the network path to

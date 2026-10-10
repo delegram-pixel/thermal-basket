@@ -55,12 +55,10 @@ export type BinanceResult<T> = BinanceSuccess<T> | BinanceFailure;
 /**
  * The shape every endpoint answers in.
  *
- * Held as optional fields rather than asserted, because it has not been observed
- * against a live authenticated call. The network path to this host was filtered
- * for the whole of the development window during which this was written, so the
- * envelope is taken from the published documentation and the parsing below is
- * written to survive being wrong about it. That is a real weakness and it is
- * recorded in the DX report rather than papered over.
+ * Failures have been observed to arrive as `HTTP 200` carrying a non-zero `code`
+ * and a `msg`, which is why the HTTP status is not what decides success here.
+ * Success bodies have only been seen as a truncated excerpt, so the fields stay
+ * optional and the code below tolerates their absence rather than asserting them.
  */
 interface Envelope<T> {
   code?: string | number;
