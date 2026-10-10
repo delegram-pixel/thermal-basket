@@ -3,7 +3,9 @@
 import { describeError, useFactoryConfig } from '@thematic/blockchain';
 import { AssetRow } from '@/components/baskets/asset-row.tsx';
 import { ErrorState, LoadingRows } from '@/components/ui/states.tsx';
-import { MockDataNotice } from '@/components/ui/notice.tsx';
+import { MockDataNotice, Notice } from '@/components/ui/notice.tsx';
+import { underlyingFor } from '@/lib/binance/symbols.ts';
+import { useReferenceFeed } from '@/features/reference/use-reference-feed.ts';
 import { useComponentCatalog } from './use-component-catalog.ts';
 
 /**
@@ -17,6 +19,24 @@ export function SupportedAssets() {
   const catalog = useComponentCatalog();
   const config = useFactoryConfig();
   const settlement = config.data?.settlementToken;
+
+  /*
+    Called before every early return below, because the number of hooks in a
+    component cannot depend on the state of a query. On a cold load `entries` is
+    empty, so this is disabled and costs nothing until the catalog resolves.
+
+    The reference column is only offered when the feed actually answered. Asking
+    and getting nothing is different from not asking, and a column of em dashes
+    would report the second as the first.
+  */
+  const reference = useReferenceFeed(catalog.entries.map((entry) => entry.token.symbol));
+  const referenceFeed = reference.data?.error ? null : (reference.data ?? null);
+
+  const referenceByTicker = new Map(
+    (referenceFeed?.prices ?? []).map(
+      (entry) => [entry.symbol.toUpperCase(), entry.price] as const,
+    ),
+  );
 
   if (catalog.loading) return <LoadingRows rows={4} />;
 
@@ -68,6 +88,11 @@ export function SupportedAssets() {
               <th scope="col" className="label py-2.5 text-right font-medium">
                 Price
               </th>
+              {referenceFeed ? (
+                <th scope="col" className="label py-2.5 pl-4 text-right font-medium">
+                  Reference
+                </th>
+              ) : null}
             </tr>
           </thead>
           <tbody>
@@ -78,11 +103,32 @@ export function SupportedAssets() {
                 price={entry.price}
                 settlementDecimals={settlement?.decimals ?? 18}
                 settlementSymbol={settlement?.symbol ?? ''}
+                referencePrice={
+                  referenceFeed
+                    ? (referenceByTicker.get(underlyingFor(entry.token.symbol).toUpperCase()) ??
+                      null)
+                    : undefined
+                }
               />
             ))}
           </tbody>
         </table>
       </div>
+
+      {referenceFeed ? (
+        <p className="mt-3 text-xs leading-relaxed text-ink-faint">
+          <span className="text-ink-muted">Reference</span> is the underlying company&apos;s real
+          market price, from the Binance Web3 API — read at{' '}
+          {new Date(referenceFeed.fetchedAt).toISOString().replace('T', ' ').slice(0, 19)} UTC. It
+          is not the price this deployment uses, and the two are not meant to agree: this deployment
+          values assets from a mock feed of fixed numbers.
+          {referenceFeed.listed === null
+            ? ''
+            : ` The API's catalogue holds ${referenceFeed.listed} tokenized ${
+                referenceFeed.listed === 1 ? 'stock' : 'stocks'
+              }.`}
+        </p>
+      ) : null}
 
       <p className="mt-3 text-xs leading-relaxed text-ink-faint">
         {catalog.source === 'deployment'
@@ -93,6 +139,29 @@ export function SupportedAssets() {
       <div className="mt-4 max-w-3xl">
         <MockDataNotice subject="The prices in this table" compact />
       </div>
+
+      {/*
+        The reference column is absent rather than empty when the feed has
+        nothing to say, so the table needs to say why — otherwise "no column"
+        reads as "this app does not do that" instead of "the API did not answer".
+      */}
+      {!referenceFeed && reference.data?.error ? (
+        <div className="mt-3 max-w-3xl">
+          <Notice
+            tone={reference.data.error.reason === 'unconfigured' ? 'neutral' : 'warning'}
+            title={
+              reference.data.error.reason === 'unconfigured'
+                ? 'No Binance Web3 API credentials on this deployment'
+                : 'Reference prices are unavailable'
+            }
+            compact
+          >
+            {reference.data.error.reason === 'unconfigured'
+              ? 'The Binance Web3 API needs a key pair this deployment has not been given, so the reference column is not shown.'
+              : reference.data.error.message}
+          </Notice>
+        </div>
+      ) : null}
     </div>
   );
 }

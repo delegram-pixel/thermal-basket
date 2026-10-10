@@ -1,0 +1,136 @@
+import {
+  BINANCE_API_BASE,
+  BINANCE_CHAIN_ID,
+  BINANCE_TIMEOUT_MS,
+  readCredentials,
+} from '@/lib/binance/env.ts';
+import { ENDPOINTS } from '@/lib/binance/rwa.ts';
+import { signedPath } from '@/lib/binance/client.ts';
+import { preHash, sign } from '@/lib/binance/sign.ts';
+import type { HealthProbe, HealthReport } from '@/lib/binance/wire.ts';
+
+/**
+ * Say, per endpoint, whether the Binance Web3 API is answering.
+ *
+ * This exists because the integration was built against an API that could not be
+ * reached from the development machine at all, and "which part is broken" is not
+ * a question the application itself can answer when the answer is different on
+ * every network. A panel that names each endpoint, its status, its latency and
+ * the API's own error code turns a bad afternoon into a screenshot.
+ *
+ * It is a diagnostic, so it calls the API directly rather than going through
+ * `binanceGet` — the shared client collapses every failure into one result, and
+ * the point of this route is that failures stay distinguishable.
+ *
+ * It exposes nothing secret: the key is never echoed, and the body excerpt is
+ * truncated and only returned to whoever can already reach this route.
+ */
+
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
+
+/** A ticker the demo deployment definitely refers to. */
+const PROBE_SYMBOL = 'NVDA';
+
+export async function GET() {
+  const credentials = readCredentials();
+
+  if (!credentials) {
+    const report: HealthReport = {
+      source: 'binance-web3',
+      fetchedAt: new Date().toISOString(),
+      configured: false,
+      probes: [],
+    };
+    return Response.json(report, { headers: { 'cache-control': 'no-store' } });
+  }
+
+  const targets: Array<[string, Record<string, string | number>]> = [
+    [ENDPOINTS.search, { chainId: BINANCE_CHAIN_ID, keyword: PROBE_SYMBOL }],
+    [ENDPOINTS.price, { chainId: BINANCE_CHAIN_ID, symbol: PROBE_SYMBOL }],
+    [ENDPOINTS.tokens, { chainId: BINANCE_CHAIN_ID }],
+    [ENDPOINTS.profile, { chainId: BINANCE_CHAIN_ID, symbol: PROBE_SYMBOL }],
+    [ENDPOINTS.market, { chainId: BINANCE_CHAIN_ID, symbol: PROBE_SYMBOL }],
+  ];
+
+  // Sequential rather than concurrent: this is a probe, and five simultaneous
+  // requests against an API that may be rate-limiting produce a result that is
+  // about the probe rather than about the API.
+  const probes: HealthProbe[] = [];
+  for (const [endpoint, query] of targets) {
+    probes.push(await probe(endpoint, query, credentials));
+  }
+
+  const report: HealthReport = {
+    source: 'binance-web3',
+    fetchedAt: new Date().toISOString(),
+    configured: true,
+    probes,
+  };
+
+  return Response.json(report, { headers: { 'cache-control': 'no-store' } });
+}
+
+async function probe(
+  endpoint: string,
+  query: Record<string, string | number>,
+  credentials: { apiKey: string; apiSecret: string },
+): Promise<HealthProbe> {
+  const requestPath = signedPath(endpoint, query);
+  const timestamp = new Date().toISOString();
+  const startedAt = Date.now();
+
+  try {
+    const response = await fetch(`${BINANCE_API_BASE}${requestPath}`, {
+      method: 'GET',
+      cache: 'no-store',
+      signal: AbortSignal.timeout(BINANCE_TIMEOUT_MS),
+      headers: {
+        'X-OC-APIKEY': credentials.apiKey,
+        'X-OC-TIMESTAMP': timestamp,
+        'X-OC-SIGN': sign(credentials.apiSecret, preHash(timestamp, 'GET', requestPath)),
+        'X-OC-RECV-WINDOW': '60000',
+        Accept: 'application/json',
+      },
+    });
+
+    const text = await response.text();
+    const ms = Date.now() - startedAt;
+
+    let code: string | undefined;
+    let message: string | undefined;
+    try {
+      const parsed = JSON.parse(text) as { code?: unknown; msg?: unknown; message?: unknown };
+      if (parsed.code !== undefined && parsed.code !== null && String(parsed.code) !== '0') {
+        code = String(parsed.code);
+      }
+      const raw = parsed.msg ?? parsed.message;
+      if (typeof raw === 'string') message = raw;
+    } catch {
+      message = 'Response was not JSON.';
+    }
+
+    return {
+      endpoint,
+      ok: response.ok,
+      status: response.status,
+      ms,
+      ...(code ? { code } : {}),
+      ...(message ? { message } : {}),
+      sample: text.slice(0, 240),
+    };
+  } catch (error) {
+    const timedOut = error instanceof Error && error.name === 'TimeoutError';
+    return {
+      endpoint,
+      ok: false,
+      status: 0,
+      ms: Date.now() - startedAt,
+      message: timedOut
+        ? `No answer within ${BINANCE_TIMEOUT_MS}ms.`
+        : error instanceof Error
+          ? error.message
+          : String(error),
+    };
+  }
+}

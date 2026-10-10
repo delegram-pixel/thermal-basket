@@ -30,6 +30,8 @@ import { PausedBadge } from '@/components/ui/badge.tsx';
 import { AddressChip } from '@/components/ui/address.tsx';
 import { ErrorState, LoadingState, RiskMark } from '@/components/ui/states.tsx';
 import { MockDataNotice, Notice } from '@/components/ui/notice.tsx';
+import { ReferencePrices } from '@/features/reference/reference-prices.tsx';
+import { UnderlyingProfiles } from '@/features/reference/underlying-profiles.tsx';
 import { AllocationChart } from '@/components/baskets/allocation-chart.tsx';
 import { BasketAllocation, AllocationLegend } from '@/components/baskets/basket-allocation.tsx';
 import { FeeSummary } from '@/components/baskets/fee-summary.tsx';
@@ -372,6 +374,39 @@ function BasketView({
             settlementDecimals={settlement.decimals}
             settlementSymbol={settlement.symbol}
           />
+        </Container>
+      </Section>
+
+      {/* -- Reference prices ------------------------------------------------ */}
+      {/*
+        The only figures on this page that are not simulated. They sit directly
+        under the composition band so the comparison is unavoidable: what the
+        basket says its holdings are worth, next to what those companies actually
+        trade at. See the component for why the gap is framed as a distance
+        rather than as an opportunity.
+      */}
+      <Section divided>
+        <Container width="wide">
+          <SectionHeading
+            title="Reference prices"
+            description="Each underlying's real market price from the Binance Web3 API, beside the price this deployment values it at."
+          />
+          <ReferencePrices
+            components={basket.components}
+            settlementDecimals={settlement.decimals}
+            settlementSymbol={settlement.symbol}
+          />
+        </Container>
+      </Section>
+
+      {/* -- The companies --------------------------------------------------- */}
+      <Section divided>
+        <Container width="wide">
+          <SectionHeading
+            title="What the holdings are"
+            description="The listed companies behind the tickers, from the Binance Web3 API. Context for the composition, not an argument for it."
+          />
+          <UnderlyingProfiles symbols={basket.components.map((component) => component.symbol)} />
         </Container>
       </Section>
 

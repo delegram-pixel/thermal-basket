@@ -18,6 +18,7 @@ export function AssetRow({
   settlementDecimals,
   settlementSymbol,
   weightBps,
+  referencePrice,
 }: {
   token: TokenMetadata;
   /** Value of one whole token in settlement smallest units, or `null` if unpriced. */
@@ -26,6 +27,15 @@ export function AssetRow({
   settlementSymbol: string;
   /** Published target weight, when this row is inside a basket. */
   weightBps?: number;
+  /**
+   * The underlying's real market price, from the Binance Web3 API.
+   *
+   * `undefined` omits the column entirely; `null` renders it as unavailable.
+   * Those are different states and the table says so — a caller that has not
+   * asked the API gets a table without the column, and a caller that asked and
+   * got nothing gets a row that admits it.
+   */
+  referencePrice?: number | null;
 }) {
   return (
     <tr className="border-b border-rule last:border-0">
@@ -62,6 +72,24 @@ export function AssetRow({
           </span>
         )}
       </td>
+
+      {referencePrice !== undefined ? (
+        <td className="py-3 pl-4 text-right align-top">
+          {referencePrice === null ? (
+            <span className="text-xs text-ink-faint" title="No reference price from the API">
+              —
+            </span>
+          ) : (
+            <span className="figure text-sm text-ink">
+              $
+              {referencePrice.toLocaleString('en-US', {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2,
+              })}
+            </span>
+          )}
+        </td>
+      ) : null}
     </tr>
   );
 }

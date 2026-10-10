@@ -100,6 +100,17 @@ export default function DisclosuresPage() {
             />
 
             <Disclosure
+              title="Sourced from the Binance Web3 API"
+              tone="neutral"
+              items={[
+                'Reference prices. The reference column on a basket page is the underlying company’s real market price, read from the Binance Web3 API when that page loaded. This application does not compute it, and it is not the figure the contracts value against.',
+                'The gap between the two columns is not an opportunity. This deployment values its assets from a mock feed of fixed numbers; the reference price is a real quotation. The distance between them is the distance between a demonstration and a market, and nothing in this application can trade on it.',
+                'Availability. The reference feed needs a key pair this deployment may not have been given. When it is missing, or when Binance does not answer, the column is left out rather than filled with a placeholder — and the page says which of those happened, because “this app does not do that” and “the API was unreachable” are different facts.',
+                'Completeness. The feed is one source, queried per ticker. It may not list a given company, and it is not the price at which anything could actually be bought or sold.',
+              ]}
+            />
+
+            <Disclosure
               title="Not implemented at all"
               tone="neutral"
               items={[
@@ -121,6 +132,7 @@ export default function DisclosuresPage() {
                 value={mock ? 'Simulated' : 'External feed'}
                 tone={mock ? 'warning' : undefined}
               />
+              <DeploymentRow label="Reference prices" value="Binance Web3 API" />
               <DeploymentRow label="Settlement asset" value={config.data?.settlementToken.symbol} />
               {book ? (
                 <div className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-1">

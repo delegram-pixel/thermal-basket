@@ -72,6 +72,11 @@ export function Colophon() {
                   What is simulated
                 </Link>
               </li>
+              <li>
+                <Link href="/diagnostics" className="text-ink-muted hover:text-ink">
+                  Binance Web3 API
+                </Link>
+              </li>
             </ul>
           </nav>
 
@@ -86,11 +91,21 @@ export function Colophon() {
                 <dt className="text-ink-muted">This build targets</dt>
                 <dd className="text-ink">{configured}</dd>
               </div>
+              {/*
+                "Prices" became ambiguous the moment the reference feed landed:
+                there are now two kinds of figure on the page and only one of them
+                is simulated. Naming which is which here is the difference between
+                a summary and a misleading one.
+              */}
               <div className="flex justify-between gap-4">
-                <dt className="text-ink-muted">Prices</dt>
+                <dt className="text-ink-muted">Basket prices</dt>
                 <dd className={mock ? 'text-warning' : 'text-ink'}>
                   {mock ? 'Simulated' : 'External feed'}
                 </dd>
+              </div>
+              <div className="flex justify-between gap-4">
+                <dt className="text-ink-muted">Reference prices</dt>
+                <dd className="text-ink">Binance</dd>
               </div>
             </dl>
           </div>

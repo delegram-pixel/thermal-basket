@@ -22,6 +22,7 @@ derived from what the contract holds, not from a number a backend asserts.
 
 - [Product](#product)
 - [Architecture](#architecture)
+- [Reference prices](#reference-prices)
 - [Smart contracts](#smart-contracts)
 - [Economic model](#economic-model)
 - [Supported networks](#supported-networks)
@@ -30,6 +31,7 @@ derived from what the contract holds, not from a number a backend asserts.
 - [Testing](#testing)
 - [Security](#security)
 - [Roadmap](#roadmap)
+- [Developer experience report](docs/DX-REPORT.md)
 
 ---
 
@@ -84,12 +86,19 @@ packages/types            shared types and constants
 ```
 
 **The web app is a read layer over the chain, not a backend.** There is no
-server, no database and no indexer. Baskets are discovered by enumerating the
-factory; composition, NAV and holdings are read from each basket contract;
-positions are read from the basket token's `balanceOf`. `packages/blockchain`
-holds those reads and the formatting they feed, so a unit convention is stated
-once rather than at each call site. TanStack Query caches them and invalidates
-on the transaction receipts that change them.
+database and no indexer, and no state survives a request. Baskets are discovered
+by enumerating the factory; composition, NAV and holdings are read from each
+basket contract; positions are read from the basket token's `balanceOf`.
+`packages/blockchain` holds those reads and the formatting they feed, so a unit
+convention is stated once rather than at each call site. TanStack Query caches
+them and invalidates on the transaction receipts that change them.
+
+The one server-side component is a small set of Next.js Route Handlers under
+`apps/web/src/app/api/reference/`. They exist for exactly one reason: the Binance
+Web3 API key pair signs every request, and a signature computed in the browser
+would ship the secret to every visitor. These handlers hold the credential, sign
+the request, and pass the response on. They store nothing, and the app is fully
+functional without them — see [Reference prices](#reference-prices).
 
 Two constraints shape the client:
 
@@ -100,6 +109,83 @@ Two constraints shape the client:
 - **Nothing derived from the mock feed is presented as market data.** §10 and §39
   of the engineering specification require the disclosure, and it is carried on
   every surface that shows a price, a valuation or a NAV.
+
+---
+
+## Reference prices
+
+There are two kinds of price on a basket page and they are not the same thing.
+The one the contracts value against is an administrator-set feed of fixed
+numbers. Beside it the interface shows the **underlying company's real market
+price**, fetched from the Binance Web3 API, so a reader can see the distance
+between the two.
+
+That distance is the point. A basket of tokenized equities is only as useful as
+the market it tracks, and an application that shows a NAV without ever showing
+the market it claims to follow is asking to be trusted rather than checked. The
+column is labelled, and the gap is explained on the page rather than left for
+someone to misread as an arbitrage.
+
+### Endpoints used
+
+Five RWA Data endpoints, against `https://web3.binance.com`, all with
+`chainId=56`:
+
+| Endpoint                                        | What this application uses it for                                                                                                                                   |
+| ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /api/v1/dex/market/rwa/search`             | Resolves a ticker before anything is priced. Its name and token address are what the table shows beside the ticker, so a "tokenized NVDA" claim carries a contract. |
+| `GET /api/v1/dex/market/rwa/price`              | The reference price itself, one call per ticker.                                                                                                                    |
+| `GET /api/v1/dex/market/rwa/underlying-profile` | Company context on a basket page: name, sector, industry and description.                                                                                           |
+| `GET /api/v1/dex/market/rwa/underlying-market`  | Market capitalisation, fetched alongside the profile.                                                                                                               |
+| `GET /api/v1/dex/market/rwa/tokens`             | The catalogue size, reported beside the reference column so a row with no price can be read against how many listings exist at all.                                 |
+
+None of the four ticker-scoped calls offers a batch form — it is one request per
+ticker — which is why the caller caps its ticker list at sixteen. The catalogue
+call is the one request made for the whole deployment rather than per ticker.
+
+### Authentication
+
+Each request is signed with HMAC-SHA256 over `timestamp + method + requestPath +
+body`, with no separators between the parts, and the signature is Base64. The
+`requestPath` **includes the `/build` prefix**; signing the path without it is
+the documented cause of `40102`.
+
+| Header             | Value                                                        |
+| ------------------ | ------------------------------------------------------------ |
+| `X-OC-APIKEY`      | The API key.                                                 |
+| `X-OC-TIMESTAMP`   | ISO 8601 with milliseconds.                                  |
+| `X-OC-SIGN`        | Base64 HMAC-SHA256 of the pre-hash above.                    |
+| `X-OC-RECV-WINDOW` | Sent explicitly at 60000 ms rather than left to the default. |
+
+**The key pair never reaches the browser.** `BINANCE_WEB3_API_KEY` and
+`BINANCE_WEB3_API_SECRET` are read only inside the Route Handlers, and the module
+that reads them throws if it is ever evaluated in a browser context. A signature
+computed client-side would publish the secret to every visitor, because the
+secret is the only input a visitor would need to forge one.
+
+### When it fails
+
+The routes answer `200` with the reason in the body rather than a `5xx`. On a
+deployment with no key, "the reference feed is not configured" is a correct and
+expected state, and a `5xx` would make it indistinguishable from the handler
+being broken — those want different words on screen. The API's own error code is
+carried through verbatim, because `40102` and `40103` are the codes worth
+recognising and neither survives being paraphrased.
+
+`/diagnostics` calls all five endpoints and prints each one's status, latency,
+error code and a truncated body excerpt. It exists because the network path to
+`web3.binance.com` was filtered from the development machine for the whole of
+this integration's construction — DNS first, then the connection — so every
+question about the API had to be asked from somewhere else. A panel that names
+each endpoint and reports what it actually said is the instrument that was
+missing, and it is also the honest way to demonstrate the integration: elsewhere
+a failure is a quietly empty column, and here it is the subject.
+
+The response envelopes are parsed defensively — key candidates are searched for
+at a bounded depth rather than read by a fixed path — because a live
+authenticated response was not observed while the client was written. That is a
+finding, and it is recorded as one in [docs/DX-REPORT.md](docs/DX-REPORT.md)
+rather than papered over.
 
 ---
 
@@ -274,6 +360,25 @@ The build itself looks entirely healthy, which is the actual defect — so
 above is not set. 31337 is still permitted, but only when stated explicitly:
 the distinction being enforced is between a chain someone chose and one they
 fell into. `next dev` is untouched.
+
+### Read by the web app at request time — server only
+
+These go in `apps/web/.env.local` too. They are read by the Route Handlers that
+sign requests to the Binance Web3 API, on the server, per request.
+
+| Variable                  | Meaning                                                                                                                                                                                                                                                          |
+| ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `BINANCE_WEB3_API_KEY`    | The Web3 API key. Sent as `X-OC-APIKEY`.                                                                                                                                                                                                                         |
+| `BINANCE_WEB3_API_SECRET` | The HMAC-SHA256 key the request signature is computed with. It is never sent to Binance, and it must never be given a `NEXT_PUBLIC_` prefix — Next inlines those into the browser bundle, which would publish the key that signs every request to every visitor. |
+
+Both are optional. Absent, the reference feed reports itself as unconfigured, the
+reference columns are not rendered, and every other part of the app works
+normally — this is a deliberate failure mode, not a degraded one. Neither
+variable reaches the client bundle, and neither belongs in Vercel with a
+`NEXT_PUBLIC_` prefix.
+
+Read [Reference prices](#reference-prices) for what they are used for and
+`/diagnostics` for whether they work.
 
 ### Read by Hardhat only
 
