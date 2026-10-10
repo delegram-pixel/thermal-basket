@@ -1,12 +1,7 @@
 import { createPublicClient, http, type PublicClient } from 'viem';
 import { createConfig, createStorage } from 'wagmi';
 import { injected, walletConnect } from 'wagmi/connectors';
-import {
-  SUPPORTED_CHAINS,
-  getChain,
-  publicEnv,
-  type SupportedChainId,
-} from '@thematic/config';
+import { SUPPORTED_CHAINS, getChain, publicEnv, type SupportedChainId } from '@thematic/config';
 
 /**
  * Wallet and RPC client construction.

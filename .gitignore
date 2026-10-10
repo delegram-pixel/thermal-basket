@@ -43,3 +43,8 @@ yarn-error.log
 .vercel
 .nyc_output/
 coverage/
+
+# Playwright writes these on every run: traces, screenshots, failure contexts
+# and the HTML report. None of it is source.
+test-results/
+playwright-report/

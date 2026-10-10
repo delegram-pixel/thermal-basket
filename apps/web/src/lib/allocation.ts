@@ -1,16 +1,16 @@
 /**
  * The allocation palette.
  *
- * A single sequential ramp from the accent, plus a run of warm neutrals for
- * when a basket has more components than the ramp has steps. Deliberately not a
+ * A single sequential ramp from the accent, then five neutrals for the baskets
+ * that need more steps than the blues alone provide. Deliberately not a
  * categorical palette of distinct hues: green and red mean something specific in
  * this interface (§26), so an allocation band that used them would be implying
  * performance where it is only showing composition. A reader should be able to
  * tell at a glance that the band is a *breakdown*, not a *result*.
  *
- * The ramp is ordered so that adjacent segments stay distinguishable — the
- * steps are unevenly spaced on purpose, because an even lightening across eight
- * steps leaves the middle four looking identical at 6px tall.
+ * The steps are unevenly spaced on purpose: an even lightening across ten of
+ * them leaves the middle four looking identical at 6px tall, and telling them
+ * apart is the only job the band has (§24).
  */
 const RAMP = [
   '#123a6b',

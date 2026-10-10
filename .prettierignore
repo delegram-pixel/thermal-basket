@@ -5,6 +5,10 @@ dist
 build
 coverage
 
+# Written by `next dev` and `next build`, and it says so in its own header.
+# Formatting it would be undone by the next build.
+apps/web/next-env.d.ts
+
 # Generated from the compiled artifacts; formatting it would fight the exporter.
 packages/contracts/abis
 packages/contracts/artifacts
@@ -14,10 +18,17 @@ packages/contracts/typechain-types
 # Deployment records are written by the deploy scripts, not by hand.
 deployments
 
-# The specification and the plan are source material, not output. They are read
-# as written, and reflowing them would rewrite the document the build is
-# measured against.
+# The specification, the plan and the hackathon brief are source material, not
+# output. They are read as written, and reflowing them would rewrite the document
+# the build is measured against.
 prompt.md
 plan.md
+hackathon-require.md
 
 yarn.lock
+
+# Playwright's output, for the same reason as the build directories above: the
+# report is a generated bundle and the failure contexts are written by the
+# runner, so checking either fails on files no one edits.
+test-results
+playwright-report

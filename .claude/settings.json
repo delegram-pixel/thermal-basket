@@ -4,7 +4,17 @@
       "Bash(npx prettier *)",
       "Bash(git checkout *)",
       "Bash(node -p \"Object.keys\\(require\\('./package.json'\\).scripts\\).join\\('\\\\n'\\)\")",
-      "Bash(node --input-type=module -e ' *)"
+      "Bash(node --input-type=module -e ' *)",
+      "Bash(yarn lint *)",
+      "Bash(curl -sI -L https://thermal-basket.vercel.app/)",
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(git push *)",
+      "Bash(grep -n \"^#\\\\{1,3\\\\} \" README.md)",
+      "Bash(grep -n \"^#\\\\{1,3\\\\} \" docs/SECURITY.md)",
+      "Bash(yarn build *)",
+      "Bash(echo \"BUILD EXIT: $?\")",
+      "Bash(node -e \"const s=require\\('./apps/web/package.json'\\).scripts;console.log\\('test script:', s.test ?? 'MISSING'\\)\")"
     ]
   }
 }

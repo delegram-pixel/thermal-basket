@@ -338,7 +338,7 @@ unset or wrong. The script names it rather than skipping.
 
 **`verify:testnet` fails every contract with "You are using a deprecated V1
 endpoint".** The `etherscan.apiKey` value in `hardhat.config.ts` has been turned
-back into a per-network object. hardhat-verify branches on that value's *type*: a
+back into a per-network object. hardhat-verify branches on that value's _type_: a
 **string** means "one Etherscan-family key, use API v2 and pass the chainid",
 while an **object** means "per-explorer keys, use the old per-explorer host" —
 and those hosts were retired in May 2025, so every submission is rejected before

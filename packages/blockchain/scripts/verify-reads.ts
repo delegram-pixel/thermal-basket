@@ -88,7 +88,12 @@ type NetworkName = keyof typeof NETWORKS;
 
 const here = dirname(fileURLToPath(import.meta.url));
 
-function resolveNetwork(name: string): { network: NetworkName; chain: Chain; rpcUrl: string; path: string } {
+function resolveNetwork(name: string): {
+  network: NetworkName;
+  chain: Chain;
+  rpcUrl: string;
+  path: string;
+} {
   if (!Object.hasOwn(NETWORKS, name)) {
     throw new Error(
       `Unknown network "${name}". Known: ${Object.keys(NETWORKS).join(', ')}. Usage: verify:reads [network]`,
