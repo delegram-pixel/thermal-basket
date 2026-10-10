@@ -169,8 +169,33 @@ The routes answer `200` with the reason in the body rather than a `5xx`. On a
 deployment with no key, "the reference feed is not configured" is a correct and
 expected state, and a `5xx` would make it indistinguishable from the handler
 being broken — those want different words on screen. The API's own error code is
-carried through verbatim, because `40102` and `40103` are the codes worth
-recognising and neither survives being paraphrased.
+carried through verbatim, because `40102`, `40103` and `40304` are the codes worth
+recognising and none of them survives being paraphrased.
+
+The failure this integration actually met in production is worth naming, because
+it is not a client defect:
+
+```
+HTTP 200 · code 40304 · Service not available due to compliance restriction
+```
+
+All five endpoints returned that, from a serverless function in `iad1`. The
+transport, the path and the parameters were all correct — a malformed request
+returns `40102`, not a business code. Binance's RWA data is refused to a United
+States origin, which is expected for a tokenized-equity product rather than a
+bug. The deployment therefore pins its function region in `apps/web/vercel.json`:
+
+```json
+{ "regions": ["sin1"] }
+```
+
+so the request leaves from outside the restricted region. It is set there rather
+than with the `preferredRegion` route segment config, which this version of Next
+has deprecated and which now accepts only `auto`, `global` and `home` — handing it
+a region code fails the deploy. `regions` in `vercel.json` overrides the Function
+Region in Project Settings, so the choice is version-controlled rather than living
+in a dashboard. See [docs/DX-REPORT.md](docs/DX-REPORT.md) for the full finding,
+including why `40304` is the least actionable code in the API.
 
 `/diagnostics` calls all five endpoints and prints each one's status, latency,
 error code and a truncated body excerpt. It exists because the network path to

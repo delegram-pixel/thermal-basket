@@ -14,6 +14,11 @@ import type { ProfileFeed } from '@/lib/binance/wire.ts';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
+// Do not let this run from a United States region: Binance's RWA endpoints answer
+// `40304 Service not available due to compliance restriction` from `iad1`. The
+// region is pinned in `vercel.json`, not here, because the `preferredRegion` route
+// segment config is deprecated in this version of Next.
+
 export async function GET(request: Request) {
   const raw = new URL(request.url).searchParams.get('symbol')?.trim();
   if (!raw) {
